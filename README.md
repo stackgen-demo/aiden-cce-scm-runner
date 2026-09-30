@@ -32,6 +32,8 @@ This root does **not** create the remote runner or attach it to the agent. Those
 
 ## End-to-end steps
 
+Do these in order. Runner create (Step 1) must happen **before** tofu when `bind_gitlab_secret_to_runner=true` (default).
+
 ### Step 1 — Create the remote runner (Guild UI, manual)
 
 1. Open Guild → **Remote runners** → **Create**.
@@ -42,6 +44,8 @@ This root does **not** create the remote runner or attach it to the agent. Those
 4. Keep both off git and long-lived chat. You will hand them to platform for Helm.
 
 Runner stays **Offline** until Helm runs. That is expected.
+
+`tofu state rm` / editing tfvars does **not** delete a runner in Guild. Only Guild UI delete (or an old tofu destroy while the runner was still in state) removes it.
 
 ### Step 2 — Export tofu credentials (SE laptop)
 
@@ -83,7 +87,7 @@ tofu output
 
 **What tofu does not create:** remote runner, agent↔runner attachment.
 
-If you could not create the runner before apply, set `bind_gitlab_secret_to_runner = false` in tfvars, apply, then bind the GitLab secret onto the runner in Guild UI after Step 1.
+If the runner does not exist yet, either finish Step 1 first, or set `bind_gitlab_secret_to_runner = false`, apply, then bind the GitLab secret onto the runner in Guild UI later.
 
 ### Step 4 — Helm in the customer cluster (platform)
 
@@ -125,6 +129,7 @@ Online confirmation is **Guild UI (SE)** by default. Platform does not need a Gu
 - Never Online → wrong token, or no egress to Guild; check  
   `kubectl -n aiden-cce-runner logs -l app.kubernetes.io/name=aiden-runner`  
 
+Use the token from the **current** Guild runner. A token from a deleted runner will never go Online.
 
 ### Step 5 — Attach runner to agent (Guild UI, manual)
 
@@ -138,6 +143,15 @@ Online confirmation is **Guild UI (SE)** by default. Platform does not need a Gu
 Open agent **`cce-scm-analyst`** and send:
 
 > Describe https://gitlab.com/gitlab-org/cli as repository metadata. Prefer the forge/API path.
+
+### Replacing a runner (rehearsal / recreate)
+
+If an old `cce-scm-runner` already exists (including one previously created by tofu):
+
+1. Guild UI → detach it from the agent if attached  
+2. Guild UI → **delete** the remote runner (state rm does not delete it)  
+3. If tofu still tracks it: `tofu state rm 'sg_remote_runner.this[0]'` and `tofu state rm 'sg_remote_runner_secrets.this[0]'`  
+4. Start again at Step 1 (new token) → Step 3 apply → Step 4 Helm with the **new** token → Step 5 attach  
 
 ---
 
@@ -183,12 +197,13 @@ Open agent **`cce-scm-analyst`** and send:
 ### Teardown
 
 ```bash
+# Cluster (platform)
 helm uninstall cce-runner -n "${NS:-aiden-cce-runner}"
 kubectl delete namespace "${NS:-aiden-cce-runner}"
 
-# optional Guild cleanup
-cd terraform && tofu destroy
-# Delete remote runner cce-scm-runner in Guild UI if you no longer need it
+# Guild (SE) — tofu does not delete the remote runner
+cd terraform && tofu destroy    # integration, agent, skills, policy, vault bind
+# Then Guild UI → delete remote runner cce-scm-runner (detach from agent first if needed)
 ```
 
 ### Rebuild the image (maintainers)
