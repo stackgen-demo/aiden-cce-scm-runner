@@ -68,12 +68,12 @@ variable "remote_runner_labels" {
 
 variable "remote_runner_attach_to_agent" {
   description = <<-EOT
-    When true, sets sg_agent.remote_runners to this runner. Leave false until Guild shows the runner Online
-    (Helm/CLI started). Then run ../scripts/attach-runner.sh (or set this true and re-apply).
-    Attach is refused unless live Guild status is Online.
+    When true (default), sets sg_agent.remote_runners to this runner on the same apply that
+    registers sg_remote_runner. Guild allows attach while the runner is still Offline; shell
+    tools work only after Helm/CLI brings the runner Online.
   EOT
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "auto_approve_runner_tools" {

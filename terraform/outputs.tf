@@ -7,22 +7,21 @@ locals {
       2. Agent:                   ${sg_agent.cce_scm_analyst.name}
          skill (default):         ${sg_runbook_sop.scm_describe.name} (cce scm describe, no clone)
          skill (deep, gated):     ${sg_runbook_sop.scm_analyze.name} (clone + cce --folder)
-         remote_runner_attach_to_agent=${var.remote_runner_attach_to_agent}${var.remote_runner_attach_to_agent ? " (runner bound on sg_agent)" : " (keep false until Online)"}
+         remote_runner_attach_to_agent=${var.remote_runner_attach_to_agent}${var.remote_runner_attach_to_agent ? " (runner bound on sg_agent)" : " (not bound)"}
       3. Runner:                  ${local.runner_name}  status=${local.runner_status}
          GitLab vault bound:      ${nonsensitive(local.bind_runner_secrets)}
       4. Deploy aiden-runner (public image; no GHCR login):
            cd .. && ./helm/install.sh
          Or set RUNNER_IMAGE=${var.runner_docker_image} explicitly.
-      5. When Guild shows the runner Online:
-           ./scripts/attach-runner.sh
-      6. When gitlab_token is set, re-apply and wait ~60s for runner env sync.
+      5. When Guild shows the runner Online and gitlab_token is set, wait ~60s for vault sync.
          Then chat: Describe https://gitlab.com/gitlab-org/cli as repository metadata. Prefer the forge/API path.
+         If attach was false: ./scripts/attach-runner.sh
 
   EOT
 }
 
 output "next_steps" {
-  description = "Copy-paste steps after apply: Helm, wait Online, attach, chat."
+  description = "Copy-paste steps after apply: Helm, wait Online, chat."
   value       = local.next_steps
 }
 

@@ -14,7 +14,7 @@ Public image: `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main` (anonymous p
 
 VPN may be required to reach your Guild mothership from the laptop and/or cluster. The cluster also needs egress to `ghcr.io` and GitLab.
 
-One `tofu apply` registers the remote runner **together with** the agent, skills, and policy. The runner starts Offline. Helm makes it Online; attach is a second step.
+One `tofu apply` registers the remote runner **together with** the agent (attached by default), skills, and policy. The runner may still be Offline; Helm makes it Online so shell tools work.
 
 ## Credentials and environment
 
@@ -82,7 +82,7 @@ cd aiden-cce-scm-runner
 
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-# fill stackgen_url; leave attach=false; prefer env for tokens and model_names
+# fill stackgen_url; attach defaults true; prefer env for tokens and model_names
 tofu init && tofu apply
 tofu output
 
@@ -92,10 +92,9 @@ export MOTHERSHIP_URL="$(tofu output -raw remote_runner_mothership_url)"
 cd ..
 ./helm/install.sh
 
-# When Guild shows the runner Online:
-./scripts/attach-runner.sh
-
-# Re-apply if you set GITLAB_TOKEN after first apply; wait ~60s for vault sync.
+# Wait until Guild shows the runner Online (~60s after GITLAB_TOKEN sync), then chat.
+# Only needed if you set remote_runner_attach_to_agent=false:
+#   ./scripts/attach-runner.sh
 ```
 
 ## Verify

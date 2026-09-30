@@ -192,4 +192,4 @@ info "pods in ${NS}:"
 kubectl --context "${CTX}" -n "${NS}" get pods,sa
 wait_guild_online
 info "OK: runner ${RUNNER_NAME} Online in ${NS}."
-info "Next: ./scripts/attach-runner.sh"
+info "Agent should already have this runner attached (default). Chat when vault sync is done."

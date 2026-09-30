@@ -11,10 +11,10 @@ stackgen_token = "" # prefer TF_VAR_stackgen_token / STACKGEN_TOKEN
 # Or uncomment and replace:
 # model_names = ["your-default-chat-model"]
 
-# First apply: leave attach false. After Helm Online, run ../scripts/attach-runner.sh
+# Default attach=true: runner registration + agent binding in one apply (Offline is fine).
 create_remote_runner          = true
 remote_runner_name            = "cce-scm-runner"
-remote_runner_attach_to_agent = false
+remote_runner_attach_to_agent = true
 
 # Required before chat. Prefer env:
 #   GITLAB_TOKEN      → gitlab_token

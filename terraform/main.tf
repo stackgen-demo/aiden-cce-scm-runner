@@ -130,23 +130,6 @@ resource "sg_remote_runner_secrets" "this" {
   secrets_sync_interval_seconds = 60
 }
 
-# Live Guild status (resource status in state is often stale until refresh).
-data "sg_remote_runner" "attach_live" {
-  count = var.remote_runner_attach_to_agent ? 1 : 0
-  name  = local.runner_name
-}
-
-resource "terraform_data" "require_runner_online_to_attach" {
-  count = var.remote_runner_attach_to_agent ? 1 : 0
-
-  lifecycle {
-    precondition {
-      condition     = lower(trimspace(data.sg_remote_runner.attach_live[0].status)) == "online"
-      error_message = "remote_runner_attach_to_agent requires Guild runner status Online. Deploy with ../helm/install.sh, then ../scripts/attach-runner.sh."
-    }
-  }
-}
-
 resource "sg_runbook_sop" "scm_describe" {
   name    = local.describe_skill_name
   approve = true
@@ -183,7 +166,7 @@ resource "sg_agent" "cce_scm_analyst" {
   ] : []
 
   depends_on = [
-    terraform_data.require_runner_online_to_attach,
+    sg_remote_runner.this,
     terraform_data.validate_model_names,
     sg_runbook_sop.scm_describe,
     sg_runbook_sop.scm_analyze,
