@@ -22,7 +22,7 @@ This root does **not** create the remote runner or attach it to the agent. Those
 ## Prerequisites
 
 - Guild access (UI + PAT for tofu)
-- OpenTofu (or Terraform) ≥ 1.5, StackGen provider ≥ 0.1.41 (with `sg_skill`; AIOS-1680 / provider PR #84 for adopt + UpdateSkill)
+- OpenTofu (or Terraform) ≥ 1.5, StackGen provider ≥ 0.1.42 (`sg_skill`)
 - Customer cluster: `kubectl` + Helm 3
 - Egress from that cluster to Guild, `ghcr.io`, and GitLab
 - GitLab PAT with `read_api` (or `api` / `read_user`)
@@ -154,6 +154,7 @@ Replace the companion template under `skills/scm-api-to-backstage/references/` (
 | Load path | Agent `skills = [...]` + `load_skill` | `get_runbook` / workflow `runbook_refs` |
 
 Do not put CLI choreography in the agent persona. Guild already owns tool routing prompts.
+
 ### Replacing a runner (rehearsal / recreate)
 
 If an old `cce-scm-runner` already exists (including one previously created by tofu):

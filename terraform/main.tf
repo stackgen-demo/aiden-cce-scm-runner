@@ -2,9 +2,9 @@ terraform {
   required_version = ">= 1.5"
   required_providers {
     sg = {
-      source  = "releases.stackgen.com/stackgen/stackgen"
-      # sg_skill (manual skills) — use a build that includes AIOS-1680 / provider PR #84.
-      version = ">= 0.1.41, < 0.2.0"
+      source = "releases.stackgen.com/stackgen/stackgen"
+      # sg_skill (manual Guild skills) shipped in provider v0.1.42 (AIOS-1680).
+      version = ">= 0.1.42, < 0.2.0"
     }
   }
 }
@@ -27,9 +27,10 @@ locals {
 
   # Catalog skill (SKILL.md) managed by sg_skill — not sg_runbook_sop / upload scripts.
   skill_name = "scm-api-to-backstage${local.suffix}"
-  skill_md = regexreplace(
+  # Keep front-matter name in sync with name_suffix (exact replace of the canonical name).
+  skill_md = replace(
     file("${path.module}/../skills/scm-api-to-backstage/SKILL.md"),
-    "(?m)^name:\\s*.*$",
+    "name: scm-api-to-backstage",
     "name: ${local.skill_name}",
   )
 
@@ -126,7 +127,6 @@ resource "sg_remote_runner_secrets" "this" {
 }
 
 # Manual Guild skill from skills/scm-api-to-backstage (SKILL.md + companion template).
-# Requires StackGen provider with sg_skill (AIOS-1680 / terraform-provider-stackgen#84).
 resource "sg_skill" "scm_api_to_backstage" {
   skill_md = local.skill_md
 
