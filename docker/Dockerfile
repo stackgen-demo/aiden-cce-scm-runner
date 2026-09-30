@@ -45,12 +45,14 @@ USER root
 COPY cce-staging/ /tmp/cce-staging/
 COPY --from=cce-git-build /out/cce /tmp/cce-from-git
 
+# Install into /usr/bin (not only /usr/local/bin). aiden-runner CLI discovery
+# scans system_bin_dirs: /bin /usr/bin /sbin /usr/sbin — /usr/local/bin is skipped.
 RUN set -eux; \
   if [ "${CCE_FROM_GIT}" = "1" ]; then \
-    install -m 0755 /tmp/cce-from-git /usr/local/bin/cce; \
+    install -m 0755 /tmp/cce-from-git /usr/bin/cce; \
   elif [ "${CCE_FROM_LOCAL}" = "1" ]; then \
     test -f /tmp/cce-staging/cce; \
-    install -m 0755 /tmp/cce-staging/cce /usr/local/bin/cce; \
+    install -m 0755 /tmp/cce-staging/cce /usr/bin/cce; \
   else \
     case "${TARGETARCH}" in \
       amd64) cce_sha="${CCE_SHA256_AMD64}" ;; \
@@ -60,10 +62,11 @@ RUN set -eux; \
     url="https://releases.stackgen.com/binaries/cce/v${CCE_VERSION}/cce_${CCE_VERSION}_linux_${TARGETARCH}.tar.gz"; \
     curl -fsSL -o /tmp/cce.tgz "${url}"; \
     echo "${cce_sha}  /tmp/cce.tgz" | sha256sum -c -; \
-    tar -xzf /tmp/cce.tgz -C /usr/local/bin cce; \
+    tar -xzf /tmp/cce.tgz -C /usr/bin cce; \
     rm -f /tmp/cce.tgz; \
-    chmod +x /usr/local/bin/cce; \
+    chmod +x /usr/bin/cce; \
   fi; \
+  ln -sf /usr/bin/cce /usr/local/bin/cce; \
   rm -rf /tmp/cce-staging /tmp/cce-from-git; \
   cce --version; \
   if [ "${CCE_FROM_GIT}" = "1" ] || [ "${CCE_FROM_LOCAL}" = "1" ]; then \

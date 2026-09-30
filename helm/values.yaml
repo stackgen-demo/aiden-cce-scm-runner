@@ -1,6 +1,7 @@
 # Example values for the public aiden-runner chart.
-# Prefer ./helm/install.sh — it renders a temp values file from env so tokens
-# never land in git.
+# Prefer ./helm/install.sh — it requires STACKGEN_RUNNER_TOKEN + MOTHERSHIP_URL
+# from the operator (Guild UI after manual remote-runner create). It never reads
+# tofu state. Tokens must not land in git.
 #
 # Chart: aiden-runner from
 #   https://appcd-public-releases.s3.us-east-2.amazonaws.com/charts/
@@ -14,7 +15,7 @@ image:
 
 runner:
   mothershipUrl: "https://<your-guild-host>"
-  token: "<from tofu output remote_runner_token>"
+  token: "<from Guild UI → remote runner registration token>"
   allowedClis: bash,sh,git,glab,gh,cce,curl,jq,cat,head,tail,wc,mkdir,cp,rm,mktemp,printf,test,command
 
 rbac:

@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # install.sh — deploy the CCE overlay aiden-runner into a throwaway namespace.
-# Takes env vars. Does not lock to any specific cluster or kube context.
 #
-# Required:
-#   STACKGEN_RUNNER_TOKEN   from: tofu -chdir=terraform output -raw remote_runner_token
-#   MOTHERSHIP_URL          from: tofu -chdir=terraform output -raw remote_runner_mothership_url
+# Remote runner is created manually in Guild (UI/API). This script never reads
+# tofu state or invents a token. The operator (or customer platform) must export:
+#
+#   STACKGEN_RUNNER_TOKEN   registration token from Guild → remote runner
+#   MOTHERSHIP_URL          Guild base URL (no trailing slash)
 #
 # Optional:
 #   RUNNER_IMAGE   default ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main
 #   NS             default aiden-cce-runner
 #   KUBE_CONTEXT   current context when unset
 #   HELM_RELEASE   default cce-runner
+#   RUNNER_NAME    default cce-scm-runner (Guild status poll / logs only)
 #   ALLOWED_CLIS   includes cce (and git/glab for gated deep scan)
+#   SKIP_WAIT_ONLINE=1  install only; do not poll for Online
 #
 # Teardown:
 #   helm uninstall "$HELM_RELEASE" -n "$NS"
@@ -19,7 +22,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TF_DIR="${ROOT}/terraform"
 NS_FILE="${ROOT}/.helm-namespace"
 
 HELM_REPO="${HELM_REPO:-https://appcd-public-releases.s3.us-east-2.amazonaws.com/charts/}"
@@ -28,16 +30,6 @@ HELM_RELEASE="${HELM_RELEASE:-cce-runner}"
 ALLOWED_CLIS="${ALLOWED_CLIS:-bash,sh,git,glab,gh,cce,curl,jq,cat,head,tail,wc,mkdir,cp,rm,mktemp,printf,test,command}"
 ONLINE_TIMEOUT_SECS="${ONLINE_TIMEOUT_SECS:-300}"
 DEFAULT_IMAGE="ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"
-
-pick_tf() {
-  if command -v tofu >/dev/null 2>&1; then
-    echo tofu
-  elif command -v terraform >/dev/null 2>&1; then
-    echo terraform
-  else
-    echo ""
-  fi
-}
 
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo "==> $*" >&2; }
@@ -70,29 +62,16 @@ split_image() {
   esac
 }
 
-load_runner_creds() {
-  if [[ -n "${STACKGEN_RUNNER_TOKEN:-}" && -n "${MOTHERSHIP_URL:-}" ]]; then
-    RUNNER_TOKEN="${STACKGEN_RUNNER_TOKEN}"
-    MOTHERSHIP="${MOTHERSHIP_URL}"
-    return
-  fi
-
-  local tf
-  tf="$(pick_tf)"
-  [[ -n "${tf}" ]] || die "set STACKGEN_RUNNER_TOKEN and MOTHERSHIP_URL, or apply terraform/ first"
-  [[ -f "${TF_DIR}/terraform.tfstate" ]] || die "no terraform.tfstate in terraform/; tofu apply first (attach still false)"
-
-  RUNNER_TOKEN="$("${tf}" -chdir="${TF_DIR}" output -raw remote_runner_token)"
-  MOTHERSHIP="$("${tf}" -chdir="${TF_DIR}" output -raw remote_runner_mothership_url)"
-  if [[ -z "${RUNNER_IMAGE:-}" ]]; then
-    RUNNER_IMAGE="$("${tf}" -chdir="${TF_DIR}" output -raw runner_docker_image)"
-  fi
-  RUNNER_NAME="$("${tf}" -chdir="${TF_DIR}" output -raw remote_runner_name)"
+require_runner_creds() {
+  [[ -n "${STACKGEN_RUNNER_TOKEN:-}" ]] || die "set STACKGEN_RUNNER_TOKEN (from Guild remote-runner registration token)"
+  [[ -n "${MOTHERSHIP_URL:-}" ]] || die "set MOTHERSHIP_URL (Guild base URL, no trailing slash)"
+  RUNNER_TOKEN="${STACKGEN_RUNNER_TOKEN}"
+  MOTHERSHIP="${MOTHERSHIP_URL}"
 }
 
 guild_runner_status() {
   local token="${TF_VAR_stackgen_token:-${STACKGEN_TOKEN:-}}"
-  local base="${TF_VAR_stackgen_url:-${STACKGEN_URL:-}}"
+  local base="${TF_VAR_stackgen_url:-${STACKGEN_URL:-${MOTHERSHIP}}}"
   local name="${RUNNER_NAME:-cce-scm-runner}"
   [[ -n "${token}" && -n "${base}" ]] || return 1
   curl -fsS \
@@ -125,25 +104,21 @@ wait_guild_online() {
 
 CTX="$(resolve_context)"
 NS="${NS:-aiden-cce-runner}"
-RUNNER_IMAGE="${RUNNER_IMAGE:-}"
-RUNNER_TOKEN=""
-MOTHERSHIP=""
+RUNNER_IMAGE="${RUNNER_IMAGE:-${DEFAULT_IMAGE}}"
 RUNNER_NAME="${RUNNER_NAME:-cce-scm-runner}"
 
 assert_throwaway_ns "${NS}"
-load_runner_creds
-[[ -n "${RUNNER_TOKEN}" ]] || die "empty runner token"
-[[ -n "${MOTHERSHIP}" ]] || die "empty mothership URL"
-[[ -n "${RUNNER_IMAGE}" ]] || RUNNER_IMAGE="${DEFAULT_IMAGE}"
+require_runner_creds
 split_image "${RUNNER_IMAGE}"
 
 info "context=${CTX}"
 info "namespace=${NS} release=${HELM_RELEASE} image=${IMAGE_REPO}:${IMAGE_TAG}"
 info "ALLOWED_CLIS=${ALLOWED_CLIS}"
 info "public image: no GHCR pull secret required"
+info "token/mothership: from env only (no tofu state)"
 
 kubectl --context "${CTX}" create namespace "${NS}" --dry-run=client -o yaml | kubectl --context "${CTX}" apply -f -
-kubectl --context "${CTX}" label namespace "${NS}" purpose=cce-scm-runner ephemeral=true --overwrite
+kubectl --context "${CTX}" label namespace "${NS}" purpose=cce-scm-runner ephemeral=true --overwrite || true
 printf '%s\n' "${NS}" > "${NS_FILE}"
 
 VALUES="$(mktemp)"
@@ -181,6 +156,7 @@ helm upgrade --install "${HELM_RELEASE}" "${HELM_CHART}" \
   --repo "${HELM_REPO}" \
   --kube-context "${CTX}" \
   --namespace "${NS}" \
+  --create-namespace \
   --values "${VALUES}" \
   --wait --timeout 5m
 
@@ -190,6 +166,11 @@ kubectl --context "${CTX}" -n "${NS}" rollout status "deploy/${HELM_RELEASE}-aid
 
 info "pods in ${NS}:"
 kubectl --context "${CTX}" -n "${NS}" get pods,sa
-wait_guild_online
-info "OK: runner ${RUNNER_NAME} Online in ${NS}."
-info "Agent should already have this runner attached (default). Chat when vault sync is done."
+
+if [[ "${SKIP_WAIT_ONLINE:-0}" == "1" ]]; then
+  info "SKIP_WAIT_ONLINE=1 — check Guild UI for runner ${RUNNER_NAME} Online."
+else
+  wait_guild_online
+  info "OK: runner ${RUNNER_NAME} Online in ${NS}."
+fi
+info "Next (manual): Guild UI → attach ${RUNNER_NAME} to the analyst agent. Wait ~60s for vault sync, then chat."

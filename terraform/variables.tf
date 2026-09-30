@@ -10,7 +10,7 @@ variable "stackgen_insecure" {
 }
 
 variable "stackgen_token" {
-  description = "Guild personal access token used by tofu to create runners, agents, and secrets. Set via TF_VAR_stackgen_token. Omit from tfvars rather than setting an empty string."
+  description = "Guild personal access token used by tofu to create agents, integrations, and secrets. Set via TF_VAR_stackgen_token. Omit from tfvars rather than setting an empty string."
   type        = string
   sensitive   = true
 }
@@ -33,48 +33,35 @@ variable "agent_budget_usd" {
   default     = 10
 }
 
-variable "create_remote_runner" {
-  description = "Register a new sg_remote_runner (token + mothership). Set false to look up remote_runner_name."
-  type        = bool
-  default     = true
-}
-
 variable "remote_runner_name" {
-  description = "Guild remote runner name. Empty uses cce-scm-runner (+ optional name_suffix)."
+  description = <<-EOT
+    Name of the Guild remote runner you create manually (UI/API). Not created by this root.
+    Used for skill shell-tool prefixes and optional vault secret binding.
+    Empty uses cce-scm-runner (+ optional name_suffix).
+  EOT
   type        = string
   default     = ""
 }
 
-variable "remote_runner_description" {
-  description = "Description stored on sg_remote_runner when create_remote_runner is true."
-  type        = string
-  default     = "CCE SCM runner (cce scm describe API-first; clone only for deep scan)."
-}
-
-variable "remote_runner_labels" {
-  description = "Optional static labels on the runner. Do not use timestamp() — it re-registers the runner on every apply."
-  type        = map(string)
-  default     = {}
-}
-
-variable "remote_runner_attach_to_agent" {
-  description = <<-EOT
-    When true (default), sets sg_agent.remote_runners to this runner on the same apply that
-    registers sg_remote_runner. Guild allows attach while the runner is still Offline; shell
-    tools work only after Helm/CLI brings the runner Online.
-  EOT
-  type        = bool
-  default     = true
-}
-
 variable "auto_approve_runner_tools" {
-  description = "When the runner is attached, auto-approve <runner>_execute_* tools so scm describe is not HITL-gated."
+  description = "Auto-approve <remote_runner_name>_execute_* tools so scm describe is not HITL-gated after you attach the runner in Guild."
   type        = bool
   default     = true
 }
 
 variable "create_gitlab_integration" {
-  description = "When true (default), create sg_guild_integration type=gitlab and bind its vault secret on the remote runner (typed_secret_refs.gitlab)."
+  description = "When true (default), create sg_guild_integration type=gitlab and its vault secret."
+  type        = bool
+  default     = true
+}
+
+variable "bind_gitlab_secret_to_runner" {
+  description = <<-EOT
+    When true (default), bind the GitLab vault secret on the manually created remote runner
+    (typed_secret_refs.gitlab) so mothership sync injects GITLAB_TOKEN after Online.
+    The runner named by remote_runner_name must already exist in Guild.
+    Set false if you will bind the secret in Guild UI instead.
+  EOT
   type        = bool
   default     = true
 }
@@ -115,7 +102,7 @@ variable "existing_gitlab_secret_id" {
 }
 
 variable "runner_docker_image" {
-  description = "CCE overlay image for Helm/Docker notes. Default is the public stackgen-demo package."
+  description = "CCE overlay image for Helm notes. Default is the public stackgen-demo package."
   type        = string
   default     = "ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"
 }

@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# attach-runner.sh — bind the Guild remote runner on sg_agent when attach was left false.
-# Default terraform sets remote_runner_attach_to_agent=true on first apply (Offline is fine).
-# Use this only if you applied with attach=false and want to bind later.
+# attach-runner.sh — reminder / checklist only.
+#
+# This root does NOT attach the remote runner via tofu. Create the runner in
+# Guild UI, bring it Online with Helm, then attach it to the agent in Guild UI.
 #
 #   ./scripts/attach-runner.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TF_DIR="${ROOT}/terraform"
-NS_FILE="${ROOT}/.helm-namespace"
-ATTACH_TFVARS="${TF_DIR}/attach.auto.tfvars"
 
 pick_tf() {
   if command -v tofu >/dev/null 2>&1; then
@@ -21,31 +20,25 @@ pick_tf() {
   fi
 }
 
-die() { echo "error: $*" >&2; exit 1; }
 info() { echo "==> $*" >&2; }
 
+AGENT="cce-scm-analyst"
+RUNNER="${RUNNER_NAME:-cce-scm-runner}"
+
 tf="$(pick_tf)"
-[[ -n "${tf}" ]] || die "tofu or terraform is required"
-[[ -f "${TF_DIR}/terraform.tfstate" ]] || die "no terraform.tfstate; tofu apply first"
-
-if [[ -z "${RUNNER_NAME:-}" ]]; then
-  RUNNER_NAME="$("${tf}" -chdir="${TF_DIR}" output -raw remote_runner_name 2>/dev/null || true)"
-fi
-RUNNER_NAME="${RUNNER_NAME:-cce-scm-runner}"
-
-already="$("${tf}" -chdir="${TF_DIR}" output -raw remote_runner_attach_to_agent 2>/dev/null || echo false)"
-if [[ "${already}" == "true" ]]; then
-  info "already attached (remote_runner_attach_to_agent=true). Nothing to do."
-  exit 0
+if [[ -n "${tf}" && -f "${TF_DIR}/terraform.tfstate" ]]; then
+  AGENT="$("${tf}" -chdir="${TF_DIR}" output -raw agent_name 2>/dev/null || echo "${AGENT}")"
+  RUNNER="$("${tf}" -chdir="${TF_DIR}" output -raw remote_runner_name 2>/dev/null || echo "${RUNNER}")"
 fi
 
-printf 'remote_runner_attach_to_agent = true\n' > "${ATTACH_TFVARS}"
-info "wrote ${ATTACH_TFVARS} (auto-loaded by tofu) so later applies keep the runner attached"
+cat <<EOF
+Attach is manual (not managed by tofu).
 
-info "tofu apply remote_runners=[${RUNNER_NAME}]"
-"${tf}" -chdir="${TF_DIR}" apply -input=false -auto-approve \
-  -var="remote_runner_attach_to_agent=true"
+  1. Guild → Remote runners → confirm "${RUNNER}" is Online
+  2. Guild → Agents → "${AGENT}" → attach remote runner "${RUNNER}"
+  3. Wait ~60s for vault / GITLAB_TOKEN sync
+  4. Chat the demo prompt (see README)
 
-attached="$("${tf}" -chdir="${TF_DIR}" output -raw remote_runner_attach_to_agent)"
-[[ "${attached}" == "true" ]] || die "apply finished but remote_runner_attach_to_agent is ${attached}"
-info "OK: agent $("${tf}" -chdir="${TF_DIR}" output -raw agent_name) attached to ${RUNNER_NAME}"
+Do not set remote_runners on sg_agent via this root.
+EOF
+info "checklist printed; no tofu apply performed."

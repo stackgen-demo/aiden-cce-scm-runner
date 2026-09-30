@@ -1,6 +1,8 @@
-create_remote_runner          = true
+# Non-secrets only. Remote runner is created manually in Guild — not by tofu.
+# Agent is not attached to a runner by this root (attach in Guild UI after Online).
+
 remote_runner_name            = "cce-scm-runner"
-remote_runner_attach_to_agent = true
 create_gitlab_integration     = true
+bind_gitlab_secret_to_runner  = true
 gitlab_integration_name       = "cce-scm-gitlab"
 runner_docker_image           = "ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"

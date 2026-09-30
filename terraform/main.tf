@@ -21,7 +21,8 @@ locals {
   agent_name                  = "${trimspace(var.agent_name)}${local.suffix}"
   default_remote_runner_name  = "cce-scm-runner${local.suffix}"
   resolved_remote_runner_name = trimspace(var.remote_runner_name) != "" ? trimspace(var.remote_runner_name) : local.default_remote_runner_name
-  shell_tool_prefix           = local.resolved_remote_runner_name
+  # Skill shell tool prefix must match the runner name you create in Guild UI.
+  shell_tool_prefix = local.resolved_remote_runner_name
 
   describe_skill_name = "scm-describe${local.suffix}"
   analyze_skill_name  = "scm-analyze${local.suffix}"
@@ -46,7 +47,9 @@ locals {
     ""
   )
 
-  bind_runner_secrets = local.create_gitlab_integration
+  # Bind vault → runner only when integration exists and operator opts in.
+  # Remote runner itself is created manually in Guild (not by this root).
+  bind_runner_secrets = local.create_gitlab_integration && var.bind_gitlab_secret_to_runner
 
   persona = file("${path.module}/personas/analyst.md")
 }
@@ -64,8 +67,8 @@ resource "terraform_data" "validate_gitlab_input" {
   }
 }
 
-# Vault secret for the GitLab Guild integration. Same UUID is bound on the remote
-# runner via typed_secret_refs.gitlab so mothership sync injects env (incl. GITLAB_TOKEN).
+# Vault secret for the GitLab Guild integration. Same UUID can be bound on a
+# manually created remote runner via sg_remote_runner_secrets (see bind_gitlab_secret_to_runner).
 resource "sg_secret" "gitlab_vault" {
   count = local.create_gitlab_secret ? 1 : 0
 
@@ -82,7 +85,7 @@ resource "sg_guild_integration" "gitlab" {
   count = local.create_gitlab_integration ? 1 : 0
 
   name           = local.gitlab_integration_name
-  description    = "GitLab SCM integration for ${local.resolved_remote_runner_name}."
+  description    = "GitLab SCM integration for CCE scm describe (runner ${local.resolved_remote_runner_name} created manually)."
   type           = "gitlab"
   scope          = "PROJECT"
   secret_ref_ids = [local.gitlab_secret_id]
@@ -98,38 +101,12 @@ resource "sg_guild_integration" "gitlab" {
   ]
 }
 
-# Guild registration only. The runner stays Offline until Helm/CLI starts aiden-runner.
-resource "sg_remote_runner" "this" {
-  count = var.create_remote_runner ? 1 : 0
-
-  name        = local.resolved_remote_runner_name
-  description = trimspace(var.remote_runner_description)
-  labels      = length(var.remote_runner_labels) > 0 ? var.remote_runner_labels : null
-
-  # aiden-runner writes discovery labels after Online. Treating those as drift
-  # recreates the runner and rotates the Helm token.
-  lifecycle {
-    ignore_changes = [labels]
-  }
-
-  depends_on = [terraform_data.validate_gitlab_input]
-}
-
-data "sg_remote_runner" "existing" {
-  count = var.create_remote_runner ? 0 : 1
-  name  = local.resolved_remote_runner_name
-}
-
-locals {
-  runner_name   = local.resolved_remote_runner_name
-  runner_status = var.create_remote_runner ? sg_remote_runner.this[0].status : data.sg_remote_runner.existing[0].status
-}
-
-# Attach the GitLab integration vault secret to the remote runner (typed gitlab slot).
+# Optional: attach the GitLab vault secret to an existing (manually created) remote runner.
+# Create the runner in Guild UI first when bind_gitlab_secret_to_runner=true.
 resource "sg_remote_runner_secrets" "this" {
   count = local.bind_runner_secrets ? 1 : 0
 
-  runner_id = local.runner_name
+  runner_id = local.resolved_remote_runner_name
   typed_secret_refs = {
     gitlab = local.gitlab_secret_id
   }
@@ -137,7 +114,6 @@ resource "sg_remote_runner_secrets" "this" {
   secrets_sync_interval_seconds = 60
 
   depends_on = [
-    sg_remote_runner.this,
     sg_guild_integration.gitlab,
     sg_secret.gitlab_vault,
   ]
@@ -159,13 +135,13 @@ resource "sg_runbook_sop" "scm_analyze" {
   }))
 }
 
+# Agent only — no remote_runners. Attach the manually created runner in Guild UI
+# (or API) after Helm brings it Online.
 resource "sg_agent" "cce_scm_analyst" {
   name = local.agent_name
   # Guild Create currently echoes description as empty; setting a string taints the agent.
   # No model_names — this root does not create or attach LLM providers/models.
   persona = local.persona
-
-  remote_runners = var.remote_runner_attach_to_agent ? toset([local.runner_name]) : null
 
   hitl = {
     always_allowed = [
@@ -174,12 +150,12 @@ resource "sg_agent" "cce_scm_analyst" {
     ]
   }
 
-  auto_approve_tools = var.remote_runner_attach_to_agent && var.auto_approve_runner_tools ? [
+  # Prefix matches the runner name you create in Guild. Apply before or after attach.
+  auto_approve_tools = var.auto_approve_runner_tools ? [
     { tool = "${local.shell_tool_prefix}_*" },
   ] : []
 
   depends_on = [
-    sg_remote_runner.this,
     sg_runbook_sop.scm_describe,
     sg_runbook_sop.scm_analyze,
   ]
