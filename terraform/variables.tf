@@ -36,7 +36,7 @@ variable "agent_budget_usd" {
 variable "remote_runner_name" {
   description = <<-EOT
     Name of the Guild remote runner you create manually (UI/API). Not created by this root.
-    Used for skill shell-tool prefixes and optional vault secret binding.
+    Used for shell-tool prefixes and optional vault secret binding.
     Empty uses cce-scm-runner (+ optional name_suffix).
   EOT
   type        = string

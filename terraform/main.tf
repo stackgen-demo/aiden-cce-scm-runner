@@ -3,7 +3,8 @@ terraform {
   required_providers {
     sg = {
       source  = "releases.stackgen.com/stackgen/stackgen"
-      version = ">= 0.1.25, < 0.2.0"
+      # sg_skill (manual skills) — use a build that includes AIOS-1680 / provider PR #84.
+      version = ">= 0.1.41, < 0.2.0"
     }
   }
 }
@@ -24,8 +25,13 @@ locals {
   # Skill shell tool prefix must match the runner name you create in Guild UI.
   shell_tool_prefix = local.resolved_remote_runner_name
 
-  describe_skill_name = "scm-describe${local.suffix}"
-  analyze_skill_name  = "scm-analyze${local.suffix}"
+  # Catalog skill (SKILL.md) managed by sg_skill — not sg_runbook_sop / upload scripts.
+  skill_name = "scm-api-to-backstage${local.suffix}"
+  skill_md = regexreplace(
+    file("${path.module}/../skills/scm-api-to-backstage/SKILL.md"),
+    "(?m)^name:\\s*.*$",
+    "name: ${local.skill_name}",
+  )
 
   gitlab_integration_name = trimspace(var.gitlab_integration_name) != "" ? trimspace(var.gitlab_integration_name) : "cce-scm-gitlab${local.suffix}"
 
@@ -51,11 +57,7 @@ locals {
   # Remote runner itself is created manually in Guild (not by this root).
   bind_runner_secrets = local.create_gitlab_integration && var.bind_gitlab_secret_to_runner
 
-  persona = trimspace(templatefile("${path.module}/personas/analyst.md.tftpl", {
-    describe_skill    = local.describe_skill_name
-    analyze_skill     = local.analyze_skill_name
-    shell_tool_prefix = local.shell_tool_prefix
-  }))
+  persona = trimspace(file("${path.module}/personas/analyst.md.tftpl"))
 }
 
 resource "terraform_data" "validate_gitlab_input" {
@@ -123,20 +125,18 @@ resource "sg_remote_runner_secrets" "this" {
   ]
 }
 
-resource "sg_runbook_sop" "scm_describe" {
-  name    = local.describe_skill_name
-  approve = true
-  description = trimspace(templatefile("${path.module}/skills/scm-describe.md.tftpl", {
-    shell_tool_prefix = local.shell_tool_prefix
-  }))
-}
+# Manual Guild skill from skills/scm-api-to-backstage (SKILL.md + companion template).
+# Requires StackGen provider with sg_skill (AIOS-1680 / terraform-provider-stackgen#84).
+resource "sg_skill" "scm_api_to_backstage" {
+  skill_md = local.skill_md
 
-resource "sg_runbook_sop" "scm_analyze" {
-  name    = local.analyze_skill_name
-  approve = true
-  description = trimspace(templatefile("${path.module}/skills/scm-analyze.md.tftpl", {
-    shell_tool_prefix = local.shell_tool_prefix
-  }))
+  files = [
+    {
+      path    = "references/catalog-template.example.yaml"
+      kind    = "reference"
+      content = file("${path.module}/../skills/scm-api-to-backstage/references/catalog-template.example.yaml")
+    },
+  ]
 }
 
 # Agent only — no remote_runners. Attach the manually created runner in Guild UI
@@ -147,22 +147,13 @@ resource "sg_agent" "cce_scm_analyst" {
   # No model_names — this root does not create or attach LLM providers/models.
   persona = local.persona
 
-  hitl = {
-    always_allowed = [
-      "load_skill",
-      "search_skill",
-    ]
-  }
+  # Startup-materialize the catalog skill (loadDynamicSkills). Procedure lives in SKILL.md.
+  skills = [sg_skill.scm_api_to_backstage.name]
 
   # Prefix matches the runner name you create in Guild. Apply before or after attach.
   auto_approve_tools = var.auto_approve_runner_tools ? [
     { tool = "${local.shell_tool_prefix}_*" },
   ] : []
-
-  depends_on = [
-    sg_runbook_sop.scm_describe,
-    sg_runbook_sop.scm_analyze,
-  ]
 
   # Provider UpdateAgent can 400 on auto_approve_tools (when_args_contain).
   lifecycle {
