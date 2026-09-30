@@ -1,26 +1,22 @@
-# Fill secrets via env (STACKGEN_TOKEN, TF_VAR_model_names, GITLAB_TOKEN).
-# Empty string in tfvars overrides env — omit secret keys instead of "".
+# Prefer scripts/.env (TF_VAR_*) for secrets — see scripts/env.example.
+# If you set a key here, it overrides TF_VAR_*. Never commit real tokens.
+# Empty string overrides env too — omit secret keys instead of "".
+# This root does not create LLM providers or models.
 
-stackgen_url   = "https://<your-guild-host>"
-stackgen_token = "" # prefer TF_VAR_stackgen_token / STACKGEN_TOKEN
-# stackgen_project_id = ""
+# Required (or set TF_VAR_stackgen_url / TF_VAR_stackgen_token):
+# stackgen_url   = "https://<your-guild-host>"
+# stackgen_token = "<guild-personal-access-token>"
+# stackgen_project_id = ""   # only if tenant requires it
 
-# Required: names of models already in this Guild tenant (not LLM vendor API keys).
-# Prefer env so an empty list here does not override it:
-#   export TF_VAR_model_names='["your-default-chat-model"]'
-# Or uncomment and replace:
-# model_names = ["your-default-chat-model"]
+# GitLab integration + runner bind (or set TF_VAR_gitlab_token):
+# gitlab_token    = "<gitlab-read-api-token>"
+# gitlab_base_url = "https://gitlab.com"
+# create_gitlab_integration = true
+# gitlab_integration_name   = "cce-scm-gitlab"
+# existing_gitlab_secret_id = ""
 
-# Default attach=true: runner registration + agent binding in one apply (Offline is fine).
 create_remote_runner          = true
 remote_runner_name            = "cce-scm-runner"
 remote_runner_attach_to_agent = true
-
-# Required before chat. Prefer env:
-#   GITLAB_TOKEN      → gitlab_token
-#   GITLAB_BASE_URL   → gitlab_base_url (optional; default gitlab.com)
-# gitlab_token    = ""
-# gitlab_base_url = "https://gitlab.com"
-# existing_gitlab_secret_id = ""
 
 runner_docker_image = "ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"

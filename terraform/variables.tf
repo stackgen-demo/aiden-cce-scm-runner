@@ -1,5 +1,5 @@
 variable "stackgen_url" {
-  description = "Base URL of your Guild / Aiden tenant (no trailing slash)."
+  description = "Base URL of your Guild / Aiden tenant (no trailing slash). Set via TF_VAR_stackgen_url."
   type        = string
 }
 
@@ -10,24 +10,15 @@ variable "stackgen_insecure" {
 }
 
 variable "stackgen_token" {
-  description = "Guild personal access token used by tofu to create runners, agents, and secrets."
+  description = "Guild personal access token used by tofu to create runners, agents, and secrets. Set via TF_VAR_stackgen_token. Omit from tfvars rather than setting an empty string."
   type        = string
   sensitive   = true
 }
 
 variable "stackgen_project_id" {
-  description = "Optional Guild org / project ID when the tenant requires explicit scope."
+  description = "Optional Guild org / project ID when the tenant requires explicit scope. Set via TF_VAR_stackgen_project_id when needed."
   type        = string
   default     = ""
-}
-
-variable "model_names" {
-  description = <<-EOT
-    Names of models already registered in this Guild tenant (priority order).
-    Copy from Guild UI → Models, or from another working agent. This is not an
-    OpenAI / Anthropic / Gemini API key. This root does not install LLM providers.
-  EOT
-  type        = list(string)
 }
 
 variable "agent_name" {
@@ -82,14 +73,30 @@ variable "auto_approve_runner_tools" {
   default     = true
 }
 
+variable "create_gitlab_integration" {
+  description = "When true (default), create sg_guild_integration type=gitlab and bind its vault secret on the remote runner (typed_secret_refs.gitlab)."
+  type        = bool
+  default     = true
+}
+
+variable "gitlab_integration_name" {
+  description = "Guild GitLab integration name. Empty uses cce-scm-gitlab (+ optional name_suffix)."
+  type        = string
+  default     = ""
+}
+
+variable "gitlab_integration_image" {
+  description = "Container image for the Guild GitLab integration."
+  type        = string
+  default     = "ghcr.io/appcd-dev/stackgen-guild-integration-gitlab:main"
+}
+
 variable "gitlab_token" {
   description = <<-EOT
-    Optional GitLab PAT or deploy token. Prefer the GITLAB_TOKEN env var
-    (maps to TF_VAR_gitlab_token). When set, this root creates a generic vault
-    secret with flat env GITLAB_TOKEN / GIT_TOKEN (and GITLAB_BASE_URL when
-    gitlab_base_url is set) and binds it on the runner.
-    Leave empty until creds exist. Do not put the token in the runner image,
-    tfvars, or task JSON. Omit the key entirely rather than setting "".
+    GitLab PAT (read_api). Set via TF_VAR_gitlab_token.
+    Creates an SCM/gitlab vault secret used by sg_guild_integration and bound on
+    the remote runner so sync injects GITLAB_TOKEN for cce scm describe.
+    Omit from tfvars rather than setting "".
   EOT
   type        = string
   sensitive   = true
@@ -97,13 +104,13 @@ variable "gitlab_token" {
 }
 
 variable "gitlab_base_url" {
-  description = "Optional GitLab origin (e.g. https://gitlab.example.com). Prefer GITLAB_BASE_URL env. Synced as GITLAB_BASE_URL / GITLAB_HOST when gitlab_token is set."
+  description = "GitLab origin. Default https://gitlab.com. Stored on the integration vault secret and synced as GITLAB_BASE_URL / GITLAB_HOST on the runner."
   type        = string
-  default     = ""
+  default     = "https://gitlab.com"
 }
 
 variable "existing_gitlab_secret_id" {
-  description = "Optional pre-created generic sg_secret UUID with GITLAB_TOKEN (and optional GIT_TOKEN / GITLAB_BASE_URL). Mutually exclusive with gitlab_token."
+  description = "Optional pre-created sg_secret UUID (SCM/gitlab; should include private_token/base_url and preferably GITLAB_TOKEN). Mutually exclusive with gitlab_token. Used for the integration and runner typed bind."
   type        = string
   default     = ""
 }

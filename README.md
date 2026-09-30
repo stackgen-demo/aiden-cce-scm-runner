@@ -4,65 +4,47 @@ Paste a GitLab URL in Guild chat. The agent runs `cce scm describe` on a remote 
 
 Public image: `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main` (anonymous pull; bake from CCE git `main` with `FROM_MAIN=1`).
 
+This root does **not** create LLM providers, models, or vendor API keys. The agent is registered without `model_names`.
+
 ## Architecture
 
 | Where | What |
 |---|---|
-| Your Guild (tofu) | `sg_remote_runner` registration + token, agent, skills, no-write policy, optional GitLab vault secret |
+| Your Guild (tofu) | `sg_remote_runner`, GitLab `sg_guild_integration`, vault secret bound on the runner (`typed_secret_refs.gitlab`), agent, skills, no-write policy |
 | Your cluster (Helm) | `aiden-runner` pod with the CCE overlay image; outbound long-poll to Guild |
-| gitlab.com (or self-managed) | REST API called by `cce scm describe` using `GITLAB_TOKEN` synced onto the runner |
+| gitlab.com (or self-managed) | REST API called by `cce scm describe` using `GITLAB_TOKEN` synced onto the runner from the GitLab integration vault secret |
 
 The cluster needs egress to Guild, `ghcr.io`, and GitLab.
 
-One `tofu apply` registers the remote runner **together with** the agent (attached by default), skills, and policy. The runner may still be Offline; Helm makes it Online so shell tools work.
+One `tofu apply` registers the remote runner **together with** the GitLab integration (secret attached to the runner), agent (attached by default), skills, and policy. The runner may still be Offline; Helm makes it Online so shell tools work.
 
 ## Credentials and environment
 
-Prefer env over secrets in git. Copy `scripts/env.example`.
+Copy `scripts/env.example` → `scripts/.env`, fill the placeholders, source it. Do not commit `.env`.
 
-```bash
-# --- Guild / Aiden (required for tofu) ---
-export STACKGEN_URL="https://<your-guild-host>"          # mothership
-export STACKGEN_TOKEN="<guild-personal-access-token>"  # create agents/runners/secrets
-# export STACKGEN_PROJECT_ID="<org-or-project-id>"     # only if tenant requires it
+Terraform variables ↔ env (OpenTofu reads `TF_VAR_<name>`):
 
-# --- Existing Guild model name(s) — NOT an API key ---
-# Copy from Guild UI (Models) or from another agent already working in this tenant.
-export TF_VAR_model_names='["<existing-model-name>"]'
+| Terraform var | Env (`scripts/.env`) | What you put |
+|---|---|---|
+| `stackgen_url` | `TF_VAR_stackgen_url` | Guild base URL, no trailing slash |
+| `stackgen_token` | `TF_VAR_stackgen_token` | Guild personal access token |
+| `gitlab_token` | `TF_VAR_gitlab_token` | GitLab PAT with `read_api` (needed even for public gitlab.com) |
+| `gitlab_base_url` | `TF_VAR_gitlab_base_url` | Optional. Default `https://gitlab.com`. Self-managed origin when needed |
+| `stackgen_project_id` | `TF_VAR_stackgen_project_id` | Optional. Org/project id if the tenant requires it |
 
-# --- GitLab API for scm describe (required even for public repos) ---
-export GITLAB_TOKEN="<read-only PAT>"   # scopes: read_api (or equivalent)
-# export GITLAB_BASE_URL="https://gitlab.com"   # set only for self-managed GitLab
+Prefer env for secrets. Do not set secret keys to `""` in tfvars — that overrides env.
 
-# --- Helm install (after tofu; from outputs or explicit) ---
-export MOTHERSHIP_URL="$STACKGEN_URL"
-export STACKGEN_RUNNER_TOKEN="<from tofu output remote_runner_token>"
-export RUNNER_IMAGE="ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"
-# export KUBE_CONTEXT="..."
-# export NS="aiden-cce-runner"
-```
+### After `tofu apply` (Helm)
 
-| Env var | Required | Used by | Purpose |
-|---|---|---|---|
-| `STACKGEN_URL` | Yes | tofu / Helm mothership | Guild base URL (no trailing slash) |
-| `STACKGEN_TOKEN` | Yes | tofu | Guild PAT to create runner, agent, secrets |
-| `STACKGEN_PROJECT_ID` | No | tofu | Org/project scope when required |
-| `TF_VAR_model_names` | Yes | tofu → `sg_agent` | Names of models **already** in the tenant (JSON list). Not an LLM vendor API key. |
-| `GITLAB_TOKEN` | Yes (before chat) | tofu → vault → runner env | GitLab API for `cce scm describe` |
-| `GITLAB_BASE_URL` | No | tofu → vault → runner env | Self-managed GitLab origin; omit for gitlab.com |
-| `STACKGEN_RUNNER_TOKEN` | Yes (Helm step) | `helm/install.sh` | From `tofu output remote_runner_token` |
-| `MOTHERSHIP_URL` | Yes (Helm step) | `helm/install.sh` | Same as Guild URL unless output differs |
-| `RUNNER_IMAGE` | No | Helm | Default `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main`; no GHCR login when public |
-| `KUBE_CONTEXT` / `NS` | No | Helm | Cluster context and throwaway namespace |
+| Variable | What you put |
+|---|---|
+| `STACKGEN_RUNNER_TOKEN` | `tofu -chdir=terraform output -raw remote_runner_token` |
+| `MOTHERSHIP_URL` | Usually same as `TF_VAR_stackgen_url` |
+| `RUNNER_IMAGE` | Leave default: `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main` |
 
-**Not required:** `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or any other LLM provider credential. This root does not install LLM providers. If chat fails with “no model,” pick an existing model name from Guild and set `model_names`.
+**Do not set:** `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or any other LLM vendor credential. No foundation apply. No `model_names`.
 
-Also:
-
-- Do not commit real tokens in `terraform/terraform.tfvars`.
-- Do not put `GITLAB_TOKEN` in the image or checked-in Helm values.
-- No GitHub token needed to pull the public runner image.
-- Empty string in tfvars overrides env — omit secret keys instead of `""`.
+No GitLab token in the image or checked-in Helm values. No GitHub token to pull the public image.
 
 ## Prerequisites
 
@@ -70,37 +52,39 @@ Also:
 - `kubectl` + Helm 3
 - Egress from the cluster to Guild, `ghcr.io`, and GitLab
 - A read-only GitLab PAT (`read_api`)
-- An existing Guild model name
 
 ## Quick start
 
 ```bash
 git clone https://github.com/stackgen-demo/aiden-cce-scm-runner.git
 cd aiden-cce-scm-runner
-# export env vars from the table above (STACKGEN_*, TF_VAR_model_names, GITLAB_TOKEN)
+
+cp scripts/env.example scripts/.env
+# fill: TF_VAR_stackgen_url, TF_VAR_stackgen_token, TF_VAR_gitlab_token
+# optional: TF_VAR_stackgen_project_id, TF_VAR_gitlab_base_url
+set -a && source scripts/.env && set +a
 
 cd terraform
-cp terraform.tfvars.example terraform.tfvars
-# fill stackgen_url; attach defaults true; prefer env for tokens and model_names
+cp terraform.tfvars.example terraform.tfvars   # non-secrets only; no tokens
 tofu init && tofu apply
 tofu output
 
-# Capture Helm inputs
 export STACKGEN_RUNNER_TOKEN="$(tofu output -raw remote_runner_token)"
 export MOTHERSHIP_URL="$(tofu output -raw remote_runner_mothership_url)"
 cd ..
 ./helm/install.sh
 
-# Wait until Guild shows the runner Online (~60s after GITLAB_TOKEN sync), then chat.
+# Wait until Guild shows the runner Online (~60s after vault sync), then chat.
 # Only needed if you set remote_runner_attach_to_agent=false:
 #   ./scripts/attach-runner.sh
 ```
 
 ## Verify
 
-1. Guild UI → remote runners → `cce-scm-runner` is **Online**.
-2. Pod env has `GITLAB_TOKEN` set after vault sync (do not print the value).
-3. Chat demo prompt below succeeds.
+1. Guild UI → Integrations → `cce-scm-gitlab` exists.
+2. Guild UI → remote runners → `cce-scm-runner` is **Online**, with GitLab secret sync.
+3. Pod env has `GITLAB_TOKEN` set after vault sync (do not print the value).
+4. Chat demo prompt below succeeds.
 
 ## Demo prompt
 
@@ -109,7 +93,7 @@ cd ..
 ## Security
 
 - Policy `cce-scm-no-write` blocks forge/infra write commands on the runner.
-- GitLab token reaches the pod only via Guild vault → runner secret sync.
+- GitLab token reaches the pod only via Guild vault → runner secret sync (`typed_secret_refs.gitlab`).
 - Public image pull needs no GHCR credentials.
 
 ## Teardown
@@ -120,7 +104,7 @@ kubectl delete namespace "${NS:-aiden-cce-runner}"
 # optional: cd terraform && tofu destroy
 ```
 
-Helm teardown leaves the Guild `sg_remote_runner` row until you `tofu destroy`.
+Helm teardown leaves the Guild `sg_remote_runner` / integration until you `tofu destroy`.
 
 ## Rebuild the image (maintainers)
 

@@ -9,11 +9,12 @@ locals {
          skill (deep, gated):     ${sg_runbook_sop.scm_analyze.name} (clone + cce --folder)
          remote_runner_attach_to_agent=${var.remote_runner_attach_to_agent}${var.remote_runner_attach_to_agent ? " (runner bound on sg_agent)" : " (not bound)"}
       3. Runner:                  ${local.runner_name}  status=${local.runner_status}
-         GitLab vault bound:      ${nonsensitive(local.bind_runner_secrets)}
+         GitLab integration:      ${local.create_gitlab_integration ? local.gitlab_integration_name : "(none)"}
+         GitLab secret on runner: ${nonsensitive(local.bind_runner_secrets)} (typed_secret_refs.gitlab)
       4. Deploy aiden-runner (public image; no GHCR login):
            cd .. && ./helm/install.sh
          Or set RUNNER_IMAGE=${var.runner_docker_image} explicitly.
-      5. When Guild shows the runner Online and gitlab_token is set, wait ~60s for vault sync.
+      5. When Guild shows the runner Online and GitLab is bound, wait ~60s for vault sync.
          Then chat: Describe https://gitlab.com/gitlab-org/cli as repository metadata. Prefer the forge/API path.
          If attach was false: ./scripts/attach-runner.sh
 
@@ -40,11 +41,6 @@ output "analyze_skill_name" {
   value       = sg_runbook_sop.scm_analyze.name
 }
 
-output "model_names" {
-  description = "Guild model names wired on the agent (existing tenant models)."
-  value       = [for m in var.model_names : trimspace(m) if trimspace(m) != ""]
-}
-
 output "remote_runner_name" {
   value = local.runner_name
 }
@@ -58,8 +54,13 @@ output "remote_runner_attach_to_agent" {
   value = var.remote_runner_attach_to_agent
 }
 
+output "gitlab_integration_name" {
+  description = "Guild GitLab integration name (empty when not created)."
+  value       = local.create_gitlab_integration ? local.gitlab_integration_name : ""
+}
+
 output "gitlab_secret_bound" {
-  description = "True when a generic GITLAB_TOKEN vault secret is bound on the runner."
+  description = "True when the GitLab vault secret is bound on the runner via typed_secret_refs.gitlab."
   value       = nonsensitive(local.bind_runner_secrets)
 }
 
