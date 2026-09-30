@@ -12,7 +12,7 @@ Public image: `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main` (anonymous p
 | Your cluster (Helm) | `aiden-runner` pod with the CCE overlay image; outbound long-poll to Guild |
 | gitlab.com (or self-managed) | REST API called by `cce scm describe` using `GITLAB_TOKEN` synced onto the runner |
 
-VPN may be required to reach your Guild mothership from the laptop and/or cluster. The cluster also needs egress to `ghcr.io` and GitLab.
+The cluster needs egress to Guild, `ghcr.io`, and GitLab.
 
 One `tofu apply` registers the remote runner **together with** the agent (attached by default), skills, and policy. The runner may still be Offline; Helm makes it Online so shell tools work.
 
@@ -22,7 +22,7 @@ Prefer env over secrets in git. Copy `scripts/env.example`.
 
 ```bash
 # --- Guild / Aiden (required for tofu) ---
-export STACKGEN_URL="https://<your-guild-host>"          # mothership; VPN may be required
+export STACKGEN_URL="https://<your-guild-host>"          # mothership
 export STACKGEN_TOKEN="<guild-personal-access-token>"  # create agents/runners/secrets
 # export STACKGEN_PROJECT_ID="<org-or-project-id>"     # only if tenant requires it
 
@@ -66,7 +66,6 @@ Also:
 
 ## Prerequisites
 
-- VPN to your Guild if the mothership is private
 - `tofu` (or Terraform) ≥ 1.5 and StackGen provider ≥ 0.1.25
 - `kubectl` + Helm 3
 - Egress from the cluster to Guild, `ghcr.io`, and GitLab
