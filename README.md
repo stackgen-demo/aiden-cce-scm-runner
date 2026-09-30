@@ -1,162 +1,191 @@
 # Aiden CCE SCM runner
 
-Paste a GitLab URL in Guild chat. The agent runs `cce scm describe` on a remote runner and returns forge metadata YAML. No clone on the default path.
+Paste a GitLab URL in Guild chat. The agent runs `cce scm describe` on a remote runner and returns forge metadata YAML (no clone on the default path).
 
-Public image: `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main` (anonymous pull; multi-arch `linux/amd64` + `linux/arm64`).
+**Public image:** `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main`  
+Anonymous pull. Multi-arch: `linux/amd64` + `linux/arm64`.
 
-This root does **not** create LLM providers, models, or vendor API keys. It also does **not** create the remote runner or attach it to the agent. Those steps are manual.
+This root does **not** create LLM providers, models, or vendor API keys.  
+This root does **not** create the remote runner or attach it to the agent. Those are manual Guild UI actions.
 
-## Who does what
+---
 
-| Step | Who | How |
-|---|---|---|
-| 1. Create remote runner in Guild | SE / customer admin | Guild UI → Remote runners → Create (`cce-scm-runner`). Copy token + mothership URL. |
-| 2. tofu apply | SE | Creates GitLab integration + vault, agent, skills, policy. Optionally binds vault secret on the existing runner. |
-| 3. Helm in cluster | Customer platform | `./helm/install.sh` with env you hand them (token + mothership). Creates namespace if needed. |
-| 4. Attach runner → agent | SE | Guild UI after Online. |
-| 5. Chat demo | SE | Agent `cce-scm-analyst`. |
+## Roles
 
-## What tofu creates
-
-| Resource | Name (defaults) |
+| Role | Actions |
 |---|---|
-| GitLab integration | `cce-scm-gitlab` |
-| Vault secret (SCM/gitlab) | optionally bound on runner as `typed_secret_refs.gitlab` |
-| Agent | `cce-scm-analyst` (**no** runner attached) |
-| Skills | `scm-describe`, `scm-analyze` |
-| Policy | `cce-scm-no-write` |
+| **SE / Guild admin** | Create remote runner in Guild, run tofu, attach runner to agent, run chat demo |
+| **Customer platform** | Run Helm in their cluster with the token + mothership URL you give them |
 
-**Not created by tofu:** `sg_remote_runner`, agent `remote_runners` attachment.
-
-## What you must provide
-
-### 1. Environment variables for tofu
-
-Export in your shell. OpenTofu maps `TF_VAR_<name>` → variable `<name>`. **Do not** put these in `terraform.tfvars`. An empty `""` in tfvars overrides a set `TF_VAR_*`.
-
-| Env name | Required | Value |
-|---|---|---|
-| `TF_VAR_stackgen_url` | Yes | Guild base URL, no trailing slash |
-| `TF_VAR_stackgen_token` | Yes | Guild personal access token |
-| `TF_VAR_gitlab_token` | Yes | GitLab PAT with `read_api` (or `api` / `read_user`) |
-| `TF_VAR_stackgen_project_id` | If tenant needs org scope | Guild org / project UUID |
-| `TF_VAR_gitlab_base_url` | No | Default `https://gitlab.com` |
-
-```bash
-export TF_VAR_stackgen_url="https://<your-guild-host>"
-export TF_VAR_stackgen_token="<guild-pat>"
-export TF_VAR_gitlab_token="<gitlab-pat>"
-# export TF_VAR_stackgen_project_id="<org-uuid>"
-```
-
-**Do not set** `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or any other LLM vendor key.
-
-### 2. `terraform/terraform.tfvars` (non-secrets)
-
-```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-```
-
-| Variable | Example | Purpose |
-|---|---|---|
-| `remote_runner_name` | `"cce-scm-runner"` | Name you will create in Guild UI (skill tool prefix + optional secret bind) |
-| `create_gitlab_integration` | `true` | Create GitLab integration + vault |
-| `bind_gitlab_secret_to_runner` | `true` | Bind vault on that runner (runner must already exist) |
-| `gitlab_integration_name` | `"cce-scm-gitlab"` | Integration name |
-| `runner_docker_image` | `"ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"` | Image for Helm notes |
-
-If `bind_gitlab_secret_to_runner=true`, create the remote runner in Guild **before** `tofu apply`. Otherwise set it `false` and bind the secret in Guild UI later.
-
-### 3. Helm (platform — explicit env only)
-
-`./helm/install.sh` **does not** read tofu state. Platform must set:
-
-| Env name | Required | Value |
-|---|---|---|
-| `STACKGEN_RUNNER_TOKEN` | Yes | Registration token from Guild remote-runner create / detail |
-| `MOTHERSHIP_URL` | Yes | Same as Guild URL (no trailing slash) |
-| `RUNNER_IMAGE` | No | Default `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main` |
-| `NS` | No | Default `aiden-cce-runner` (script creates it) |
-| `RUNNER_NAME` | No | Default `cce-scm-runner` (status wait label) |
-
-No GitLab token in Helm values. No GHCR login for the public image.
+---
 
 ## Prerequisites
 
+- Guild access (UI + PAT for tofu)
 - OpenTofu (or Terraform) ≥ 1.5, StackGen provider ≥ 0.1.25
-- `kubectl` + Helm 3 on the cluster that will host the runner
-- Cluster egress to Guild, `ghcr.io`, and GitLab
-- Valid GitLab PAT (`read_api` or better)
+- Customer cluster: `kubectl` + Helm 3
+- Egress from that cluster to Guild, `ghcr.io`, and GitLab
+- GitLab PAT with `read_api` (or `api` / `read_user`)
+- An existing Guild model name only if the agent UI requires one later (this root does not set `model_names` or LLM keys)
 
-## Quick start
+---
+
+## End-to-end steps
+
+### Step 1 — Create the remote runner (Guild UI, manual)
+
+1. Open Guild → **Remote runners** → **Create**.
+2. Name it exactly: `cce-scm-runner` (must match `remote_runner_name` in tfvars).
+3. Save and **copy immediately**:
+   - Registration **token**
+   - **Mothership URL** (Guild base URL, no trailing slash)
+4. Keep both off git and long-lived chat. You will hand them to platform for Helm.
+
+Runner stays **Offline** until Helm runs. That is expected.
+
+### Step 2 — Export tofu credentials (SE laptop)
+
+```bash
+export TF_VAR_stackgen_url="https://<your-guild-host>"   # same as mothership; no trailing slash
+export TF_VAR_stackgen_token="<guild-pat>"
+export TF_VAR_gitlab_token="<gitlab-pat>"                 # read_api or better
+# export TF_VAR_stackgen_project_id="<org-uuid>"          # only if tenant requires it
+# export TF_VAR_gitlab_base_url="https://gitlab.example.com"  # self-managed only
+```
+
+Do **not** put these in `terraform.tfvars`. Empty `""` in tfvars overrides a set `TF_VAR_*`.  
+Do **not** set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or any LLM vendor key.
+
+### Step 3 — tofu apply (GitLab integration + agent; no runner)
 
 ```bash
 git clone https://github.com/stackgen-demo/aiden-cce-scm-runner.git
 cd aiden-cce-scm-runner
 
-# --- A. Manual: Guild UI → create remote runner "cce-scm-runner" ---
-# Copy registration token + mothership URL. Keep them off git / Slack long-lived.
-
-export TF_VAR_stackgen_url="https://<your-guild-host>"
-export TF_VAR_stackgen_token="<guild-pat>"
-export TF_VAR_gitlab_token="<gitlab-pat>"
-
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
-tofu init && tofu apply
+# Confirm remote_runner_name = "cce-scm-runner"
+# bind_gitlab_secret_to_runner = true  → runner from Step 1 must already exist
+tofu init
+tofu apply
 tofu output
-
-# --- B. Hand platform (or run yourself) ---
-export MOTHERSHIP_URL="$TF_VAR_stackgen_url"
-export STACKGEN_RUNNER_TOKEN="<token-from-Guild-UI>"
-export RUNNER_IMAGE="$(tofu output -raw runner_docker_image)"
-cd ..
-./helm/install.sh
-
-# --- C. Manual: Guild UI → attach cce-scm-runner to agent cce-scm-analyst ---
-# Wait ~60s for vault sync, then chat.
 ```
 
-Paste block for platform (fill the two secrets):
+**What tofu creates**
+
+| Resource | Default name | Notes |
+|---|---|---|
+| GitLab integration | `cce-scm-gitlab` | Vault secret included |
+| Vault → runner bind | on `cce-scm-runner` | When `bind_gitlab_secret_to_runner=true` |
+| Agent | `cce-scm-analyst` | **Not** attached to a runner yet |
+| Skills | `scm-describe`, `scm-analyze` | |
+| Policy | `cce-scm-no-write` | |
+
+**What tofu does not create:** remote runner, agent↔runner attachment.
+
+If you could not create the runner before apply, set `bind_gitlab_secret_to_runner = false` in tfvars, apply, then bind the GitLab secret onto the runner in Guild UI after Step 1.
+
+### Step 4 — Helm in the customer cluster (platform)
+
+Hand platform this block. Fill the two secrets from Step 1. Script creates namespace `aiden-cce-runner` if missing. It does **not** read tofu state.
 
 ```bash
+git clone https://github.com/stackgen-demo/aiden-cce-scm-runner.git
+cd aiden-cce-scm-runner
+
 export MOTHERSHIP_URL="https://<their-guild-host>"
-export STACKGEN_RUNNER_TOKEN="<registration-token>"
-# optional: export NS=aiden-cce-runner KUBE_CONTEXT=...
+export STACKGEN_RUNNER_TOKEN="<registration-token-from-Guild>"
+# optional:
+# export NS="aiden-cce-runner"
+# export KUBE_CONTEXT="<context>"
+# export RUNNER_NAME="cce-scm-runner"
+# export RUNNER_IMAGE="ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"
+
 ./helm/install.sh
 ```
 
-## Verify
+**What Helm does**
 
-1. Guild → Integrations → `cce-scm-gitlab`
-2. Guild → remote runners → `cce-scm-runner` Online; GitLab secret bound
-3. Agent has the runner attached (UI)
-4. Demo prompt below succeeds
+- Creates namespace (default `aiden-cce-runner`)
+- Installs chart `aiden-runner` with the public CCE image
+- Sets mothership URL + runner token + `ALLOWED_CLIS` (includes `cce`)
+- Restarts the deploy and waits until Guild shows the runner **Online**
 
-## Demo prompt
+**What Helm does not need**
+
+- GHCR login (public image)
+- GitLab token (vault sync after Online)
+- Guild PAT / tofu
+
+If install hangs Offline: check pod logs (`kubectl -n aiden-cce-runner logs -l app.kubernetes.io/name=aiden-runner`), egress to Guild, and that the token matches the runner created in Step 1.
+
+### Step 5 — Attach runner to agent (Guild UI, manual)
+
+1. Confirm Guild → Remote runners → `cce-scm-runner` is **Online**.
+2. Guild → Agents → `cce-scm-analyst` → **attach** remote runner `cce-scm-runner`.
+3. Wait ~60 seconds for vault sync (`GITLAB_TOKEN` into runner tool env). Do not print the token.
+4. Optional checklist: `./scripts/attach-runner.sh` (prints steps only; does not apply tofu).
+
+### Step 6 — Demo chat
+
+Open agent **`cce-scm-analyst`** and send:
 
 > Describe https://gitlab.com/gitlab-org/cli as repository metadata. Prefer the forge/API path.
 
-## Security
+---
 
-- Policy `cce-scm-no-write` blocks write actions on the runner
-- GitLab PAT reaches the pod only via Guild vault → `typed_secret_refs.gitlab` sync
-- Public image; no GHCR credentials
-- Runner registration token stays in shell env for Helm only — never in tfvars or checked-in values
+## Reference
 
-## Teardown
+### Helm env vars
+
+| Env | Required | Purpose |
+|---|---|---|
+| `STACKGEN_RUNNER_TOKEN` | Yes | Guild remote-runner registration token |
+| `MOTHERSHIP_URL` | Yes | Guild base URL (no trailing slash) |
+| `RUNNER_IMAGE` | No | Default `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main` |
+| `NS` | No | Default `aiden-cce-runner` |
+| `KUBE_CONTEXT` | No | Current kubectl context if unset |
+| `RUNNER_NAME` | No | Default `cce-scm-runner` (Online wait label) |
+| `SKIP_WAIT_ONLINE` | No | Set `1` to skip Guild Online poll |
+
+### tfvars knobs (non-secrets)
+
+| Variable | Example | Purpose |
+|---|---|---|
+| `remote_runner_name` | `"cce-scm-runner"` | Must match Guild runner name (skills + secret bind) |
+| `create_gitlab_integration` | `true` | Create GitLab integration + vault |
+| `bind_gitlab_secret_to_runner` | `true` | Bind vault on that runner (runner must exist) |
+| `gitlab_integration_name` | `"cce-scm-gitlab"` | Integration name |
+| `runner_docker_image` | `"ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"` | Documented Helm image |
+
+### Verify checklist
+
+1. Guild → Integrations → `cce-scm-gitlab` exists  
+2. Guild → Remote runners → `cce-scm-runner` **Online**, GitLab secret bound  
+3. Agent `cce-scm-analyst` has that runner attached  
+4. Demo prompt returns forge metadata YAML  
+
+### Security
+
+- Policy `cce-scm-no-write` blocks write actions on the runner  
+- GitLab PAT reaches the pod only via Guild vault → `typed_secret_refs.gitlab` sync  
+- Public image; no GHCR pull secret  
+- Runner registration token: shell env for Helm only — never tfvars or checked-in values  
+
+### Teardown
 
 ```bash
 helm uninstall cce-runner -n "${NS:-aiden-cce-runner}"
 kubectl delete namespace "${NS:-aiden-cce-runner}"
-# optional: cd terraform && tofu destroy
-# Delete the remote runner in Guild UI if you no longer need it.
+
+# optional Guild cleanup
+cd terraform && tofu destroy
+# Delete remote runner cce-scm-runner in Guild UI if you no longer need it
 ```
 
-## Rebuild the image (maintainers)
+### Rebuild the image (maintainers)
 
-Release tarball CCE **v0.0.8 has no `scm describe`**. Bake from CCE git `main`:
+Release CCE **v0.0.8 has no `scm describe`**. Bake from CCE git `main`:
 
 ```bash
 FROM_MAIN=1 \
@@ -167,4 +196,4 @@ FROM_MAIN=1 \
   ./scripts/build-and-push.sh
 ```
 
-Confirm anonymous pull. Package visibility must stay **Public**. Multi-arch covers amd64 and arm64 nodes.
+Package visibility must stay **Public**. Confirm anonymous `docker pull`.

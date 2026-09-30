@@ -1,24 +1,25 @@
 locals {
   next_steps = <<-EOT
 
-    Aiden CCE SCM stack applied (no remote runner created by tofu).
+    Aiden CCE SCM stack applied (tofu does not create or attach the remote runner).
 
-      1. Guild:                      ${var.stackgen_url}
-      2. Agent (no runner attached): ${sg_agent.cce_scm_analyst.name}
-         skill (default):            ${sg_runbook_sop.scm_describe.name}
-         skill (deep, gated):        ${sg_runbook_sop.scm_analyze.name}
-      3. GitLab integration:         ${local.create_gitlab_integration ? local.gitlab_integration_name : "(none)"}
-         Secret bind on runner:      ${nonsensitive(local.bind_runner_secrets)} → ${local.resolved_remote_runner_name}
-         (Runner must already exist when bind_gitlab_secret_to_runner=true.)
-      4. Create remote runner in Guild UI (manual). Name it: ${local.resolved_remote_runner_name}
-         Copy the registration token + mothership URL.
-      5. Hand platform Helm (they set env; script does not read tofu state):
-           export MOTHERSHIP_URL="<guild-url>"
-           export STACKGEN_RUNNER_TOKEN="<token-from-step-4>"
-           export RUNNER_IMAGE=${var.runner_docker_image}
-           ./helm/install.sh
-      6. When Online: attach ${local.resolved_remote_runner_name} to agent ${sg_agent.cce_scm_analyst.name} in Guild UI.
-         Wait ~60s for vault sync, then chat the demo prompt.
+      Already done (or do first if bind_gitlab_secret_to_runner=true):
+        Guild UI → create remote runner "${local.resolved_remote_runner_name}" → copy token + mothership URL.
+
+      This apply created:
+        Agent:              ${sg_agent.cce_scm_analyst.name}  (not attached yet)
+        Skills:             ${sg_runbook_sop.scm_describe.name}, ${sg_runbook_sop.scm_analyze.name}
+        GitLab integration: ${local.create_gitlab_integration ? local.gitlab_integration_name : "(none)"}
+        Secret on runner:   ${nonsensitive(local.bind_runner_secrets)} → ${local.resolved_remote_runner_name}
+
+      Next — hand platform Helm (env only; script does not read tofu state):
+        export MOTHERSHIP_URL="${var.stackgen_url}"
+        export STACKGEN_RUNNER_TOKEN="<registration-token-from-Guild-UI>"
+        export RUNNER_IMAGE=${var.runner_docker_image}
+        ./helm/install.sh
+
+      Then — Guild UI: attach ${local.resolved_remote_runner_name} → ${sg_agent.cce_scm_analyst.name}
+        Wait ~60s for vault sync, then chat the demo prompt.
 
   EOT
 }
