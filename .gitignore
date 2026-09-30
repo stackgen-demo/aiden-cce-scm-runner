@@ -6,3 +6,4 @@ terraform/terraform.tfvars
 docker/cce-staging/cce
 .env
 scripts/.env
+.helm-namespace
