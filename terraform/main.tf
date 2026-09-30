@@ -33,24 +33,12 @@ locals {
   create_gitlab_secret      = local.gitlab_token_set
   create_gitlab_integration = var.create_gitlab_integration && (local.create_gitlab_secret || local.existing_gitlab_secret)
 
-  # gitlab.com when unset — required for sg_guild_integration vault metadata.
   gitlab_base_url = trimspace(var.gitlab_base_url) != "" ? trimspace(var.gitlab_base_url) : "https://gitlab.com"
-  gitlab_host     = trim(replace(replace(local.gitlab_base_url, "https://", ""), "http://", ""), "/")
 
-  # SCM/gitlab shape for the Guild integration + flat env keys so aiden-runner
-  # sync gives cce/glab GITLAB_TOKEN (typed_secret_refs dumps metadata as env).
-  gitlab_secret_metadata = merge(
-    {
-      base_url        = local.gitlab_base_url
-      private_token   = var.gitlab_token
-      GITLAB_TOKEN    = var.gitlab_token
-      GIT_TOKEN       = var.gitlab_token
-      GIT_USERNAME    = "oauth2"
-      GITLAB_BASE_URL = local.gitlab_base_url
-      GITLAB_HOST     = local.gitlab_host
-      GIT_HOST        = local.gitlab_host
-    },
-  )
+  gitlab_secret_metadata = {
+    token          = var.gitlab_token
+    GITLAB_API_URL = local.gitlab_base_url
+  }
 
   gitlab_secret_id = (
     local.create_gitlab_secret ? sg_secret.gitlab_vault[0].id :
@@ -58,7 +46,7 @@ locals {
     ""
   )
 
-  bind_runner_secrets = local.create_gitlab_integration && trimspace(local.gitlab_secret_id) != ""
+  bind_runner_secrets = local.create_gitlab_integration
 
   persona = file("${path.module}/personas/analyst.md")
 }

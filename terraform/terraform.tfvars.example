@@ -1,22 +1,6 @@
-# Prefer scripts/.env (TF_VAR_*) for secrets — see scripts/env.example.
-# If you set a key here, it overrides TF_VAR_*. Never commit real tokens.
-# Empty string overrides env too — omit secret keys instead of "".
-# This root does not create LLM providers or models.
-
-# Required (or set TF_VAR_stackgen_url / TF_VAR_stackgen_token):
-# stackgen_url   = "https://<your-guild-host>"
-# stackgen_token = "<guild-personal-access-token>"
-# stackgen_project_id = ""   # only if tenant requires it
-
-# GitLab integration + runner bind (or set TF_VAR_gitlab_token):
-# gitlab_token    = "<gitlab-read-api-token>"
-# gitlab_base_url = "https://gitlab.com"
-# create_gitlab_integration = true
-# gitlab_integration_name   = "cce-scm-gitlab"
-# existing_gitlab_secret_id = ""
-
 create_remote_runner          = true
 remote_runner_name            = "cce-scm-runner"
 remote_runner_attach_to_agent = true
-
-runner_docker_image = "ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"
+create_gitlab_integration     = true
+gitlab_integration_name       = "cce-scm-gitlab"
+runner_docker_image           = "ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"

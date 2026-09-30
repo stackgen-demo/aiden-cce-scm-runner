@@ -93,10 +93,9 @@ variable "gitlab_integration_image" {
 
 variable "gitlab_token" {
   description = <<-EOT
-    GitLab PAT (read_api). Set via TF_VAR_gitlab_token.
-    Creates an SCM/gitlab vault secret used by sg_guild_integration and bound on
-    the remote runner so sync injects GITLAB_TOKEN for cce scm describe.
-    Omit from tfvars rather than setting "".
+    GitLab PAT (read_api or api). Set via TF_VAR_gitlab_token.
+    Stored as vault metadata key `token` (SCM/gitlab). Vault Resolve also emits
+    GITLAB_TOKEN for runner sync. Omit from tfvars rather than setting "".
   EOT
   type        = string
   sensitive   = true
@@ -104,13 +103,13 @@ variable "gitlab_token" {
 }
 
 variable "gitlab_base_url" {
-  description = "GitLab origin. Default https://gitlab.com. Stored on the integration vault secret and synced as GITLAB_BASE_URL / GITLAB_HOST on the runner."
+  description = "GitLab origin. Default https://gitlab.com. Stored as vault metadata GITLAB_API_URL."
   type        = string
   default     = "https://gitlab.com"
 }
 
 variable "existing_gitlab_secret_id" {
-  description = "Optional pre-created sg_secret UUID (SCM/gitlab; should include private_token/base_url and preferably GITLAB_TOKEN). Mutually exclusive with gitlab_token. Used for the integration and runner typed bind."
+  description = "Optional pre-created sg_secret UUID (SCM/gitlab; metadata must include `token`). Mutually exclusive with gitlab_token."
   type        = string
   default     = ""
 }
