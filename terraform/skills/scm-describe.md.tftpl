@@ -1,0 +1,52 @@
+# CCE SCM describe (API-first)
+
+Use when the user asks for repository metadata, forge inventory, activity (MRs/PRs, statuses), stale-vs-live signals, or a YAML snapshot of a GitLab repo.
+
+**Do not clone.** Call the GitLab API via `cce scm describe` on the remote runner.
+
+## Tools
+
+When the runner is attached and Online, Guild exposes:
+
+- `${shell_tool_prefix}_execute_command`
+- `${shell_tool_prefix}_execute_series`
+
+Use those for **all** `cce scm describe` and file-read work. If those tools are missing, say the runner is not Online or not attached — do not invent results.
+
+## Flow
+
+1. Parse the GitLab URL or `group/sub/project` path from the user message.
+2. Derive:
+   - `--repo` = path with namespace (e.g. `acme/checkout-api` or `group/sub/project`)
+   - `--base-url` = GitLab origin when not gitlab.com (use `GITLAB_BASE_URL` / `GITLAB_HOST` from the runner env when set; otherwise omit for gitlab.com)
+3. Run on the runner (token from env — prefer `GITLAB_TOKEN`; never print it):
+
+```text
+cce scm describe --provider gitlab --repo <group/project> [--base-url <origin>] -o /tmp/cce-scm-meta.yaml
+```
+
+4. Confirm the file exists (`wc -l /tmp/cce-scm-meta.yaml` or `test -s /tmp/cce-scm-meta.yaml`).
+5. Reply based on what the user asked:
+
+### When the user wants the YAML as-is
+
+Triggers include: "yaml as is", "generated yaml", "full yaml", "raw yaml", "paste the yaml", "show the file", "`/tmp/cce-scm-meta.yaml`", "don't summarize", "verbatim".
+
+Then you **must**:
+
+1. Run `cat /tmp/cce-scm-meta.yaml` on the runner (or `execute_series` with describe then cat).
+2. Put the **entire** tool stdout into the chat reply inside one fenced `yaml` code block.
+3. Do **not** summarize, rewrite, pretty-print into tables, omit sections, or invent fields.
+4. Do **not** wrap with analysis before/after the fence except a single optional one-line note that this is the file contents.
+5. If the file is empty or missing, say that and re-run describe — never claim you returned YAML you did not `cat`.
+
+### When the user only wants a brief overview
+
+If they did **not** ask for the file/YAML as-is, you may summarize envelope / `repository` / `activity` / `extensions.gitlab` with concrete quoted fields. Offer to paste the full YAML on request.
+
+## Hard rules
+
+- **Never clone** for this skill. No `git clone`, no `glab repo clone`, no `cce --folder`, no `cce --repo`.
+- Never print `GITLAB_TOKEN`, `GIT_TOKEN`, PATs, `env`, or URLs that embed credentials.
+- If describe fails: report GitLab API egress, missing token sync, wrong `--base-url`, or Helm `ALLOWED_CLIS` omitting `cce` — do not invent YAML.
+- If the user asks for deep code-level insights (cloud entitlements, Backstage from source tree, lenses), say that needs the **scm-analyze** skill (clone last resort) and only proceed if they confirm.

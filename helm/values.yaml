@@ -1,0 +1,24 @@
+# Example values for the public aiden-runner chart.
+# Prefer ./helm/install.sh — it renders a temp values file from env so tokens
+# never land in git.
+#
+# Chart: aiden-runner from
+#   https://appcd-public-releases.s3.us-east-2.amazonaws.com/charts/
+
+image:
+  repository: ghcr.io/stackgen-demo/aiden-cce-scm-runner
+  tag: scm-main
+  pullPolicy: Always
+
+# Public GHCR package — no imagePullSecrets required once visibility is public.
+
+runner:
+  mothershipUrl: "https://<your-guild-host>"
+  token: "<from tofu output remote_runner_token>"
+  allowedClis: bash,sh,git,glab,gh,cce,curl,jq,cat,head,tail,wc,mkdir,cp,rm,mktemp,printf,test,command
+
+rbac:
+  createClusterReadRole: false
+  namespaced:
+    enabled: true
+    createReadRole: true

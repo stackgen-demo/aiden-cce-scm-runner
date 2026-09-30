@@ -1,0 +1,26 @@
+# Fill secrets via env (STACKGEN_TOKEN, TF_VAR_model_names, GITLAB_TOKEN).
+# Empty string in tfvars overrides env — omit secret keys instead of "".
+
+stackgen_url   = "https://<your-guild-host>"
+stackgen_token = "" # prefer TF_VAR_stackgen_token / STACKGEN_TOKEN
+# stackgen_project_id = ""
+
+# Required: names of models already in this Guild tenant (not LLM vendor API keys).
+# Prefer env so an empty list here does not override it:
+#   export TF_VAR_model_names='["your-default-chat-model"]'
+# Or uncomment and replace:
+# model_names = ["your-default-chat-model"]
+
+# First apply: leave attach false. After Helm Online, run ../scripts/attach-runner.sh
+create_remote_runner          = true
+remote_runner_name            = "cce-scm-runner"
+remote_runner_attach_to_agent = false
+
+# Required before chat. Prefer env:
+#   GITLAB_TOKEN      → gitlab_token
+#   GITLAB_BASE_URL   → gitlab_base_url (optional; default gitlab.com)
+# gitlab_token    = ""
+# gitlab_base_url = "https://gitlab.com"
+# existing_gitlab_secret_id = ""
+
+runner_docker_image = "ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"
