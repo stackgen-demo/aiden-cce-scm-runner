@@ -81,8 +81,8 @@ tofu output
 |---|---|---|
 | GitLab integration | `cce-scm-gitlab` | Vault secret included |
 | Vault → runner bind | on `cce-scm-runner` | When `bind_gitlab_secret_to_runner=true` |
-| Agent | `cce-scm-analyst` | **Not** attached to a runner yet |
-| Skills | `scm-describe`, `scm-analyze` | |
+| Agent | `cce-scm-analyst` | **Not** attached to a runner yet. Persona tells it to `load_skill scm-describe` / `scm-analyze`. |
+| Skills (approved SOPs) | `scm-describe`, `scm-analyze` | Org-wide via `search_skill` / `load_skill` — no separate agent↔skill attach resource |
 | Policy | `cce-scm-no-write` | |
 
 **What tofu does not create:** remote runner, agent↔runner attachment.

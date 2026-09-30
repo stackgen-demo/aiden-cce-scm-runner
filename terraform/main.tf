@@ -51,7 +51,11 @@ locals {
   # Remote runner itself is created manually in Guild (not by this root).
   bind_runner_secrets = local.create_gitlab_integration && var.bind_gitlab_secret_to_runner
 
-  persona = file("${path.module}/personas/analyst.md")
+  persona = trimspace(templatefile("${path.module}/personas/analyst.md.tftpl", {
+    describe_skill    = local.describe_skill_name
+    analyze_skill     = local.analyze_skill_name
+    shell_tool_prefix = local.shell_tool_prefix
+  }))
 }
 
 resource "terraform_data" "validate_gitlab_input" {
