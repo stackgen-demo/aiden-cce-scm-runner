@@ -1,10 +1,8 @@
 .terraform/
 terraform/terraform.tfvars
-terraform/attach.auto.tfvars
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
-.helm-namespace
 docker/cce-staging/cce
 .env
 scripts/.env

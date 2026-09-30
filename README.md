@@ -136,7 +136,6 @@ Use the token from the **current** Guild runner. A token from a deleted runner w
 1. Confirm Guild → Remote runners → `cce-scm-runner` is **Online**.
 2. Guild → Agents → `cce-scm-analyst` → **attach** remote runner `cce-scm-runner`.
 3. Wait ~60 seconds for vault sync (`GITLAB_TOKEN` into runner tool env). Do not print the token.
-4. Optional checklist: `./scripts/attach-runner.sh` (prints steps only; does not apply tofu).
 
 ### Step 6 — Demo chat
 
