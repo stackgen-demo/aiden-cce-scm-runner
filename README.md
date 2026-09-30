@@ -87,7 +87,9 @@ If you could not create the runner before apply, set `bind_gitlab_secret_to_runn
 
 ### Step 4 — Helm in the customer cluster (platform)
 
-Hand platform this block. Fill the two secrets from Step 1. Script creates namespace `aiden-cce-runner` if missing. It does **not** read tofu state.
+Hand platform this block. Fill the two secrets from Step 1.  
+Requires: `kubectl`, Helm 3, cluster egress to Guild + `ghcr.io`.  
+Does **not** need: tofu, Guild PAT, GitLab token, or GHCR login.
 
 ```bash
 git clone https://github.com/stackgen-demo/aiden-cce-scm-runner.git
@@ -100,24 +102,29 @@ export STACKGEN_RUNNER_TOKEN="<registration-token-from-Guild>"
 # export KUBE_CONTEXT="<context>"
 # export RUNNER_NAME="cce-scm-runner"
 # export RUNNER_IMAGE="ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"
+# export HELM_TIMEOUT="15m"          # slow pulls
+# export WAIT_ONLINE=1               # also watch pod logs for Online (default: off)
 
 ./helm/install.sh
 ```
 
-**What Helm does**
+**What the script does**
 
-- Creates namespace (default `aiden-cce-runner`)
-- Installs chart `aiden-runner` with the public CCE image
-- Sets mothership URL + runner token + `ALLOWED_CLIS` (includes `cce`)
-- Restarts the deploy and waits until Guild shows the runner **Online**
+1. Checks `kubectl` + `helm` are installed  
+2. Creates namespace (default `aiden-cce-runner`) if missing  
+3. `helm upgrade --install` chart `aiden-runner` with the public CCE image, mothership URL, runner token, and `ALLOWED_CLIS` (includes `cce`)  
+4. Restarts the deploy so the pod loads the token  
+5. Prints pods; exits 0 when Helm succeeds  
 
-**What Helm does not need**
+Online confirmation is **Guild UI (SE)** by default. Platform does not need a Guild PAT. Set `WAIT_ONLINE=1` only if they want the script to also watch pod logs.
 
-- GHCR login (public image)
-- GitLab token (vault sync after Online)
-- Guild PAT / tofu
+**If Helm fails**
 
-If install hangs Offline: check pod logs (`kubectl -n aiden-cce-runner logs -l app.kubernetes.io/name=aiden-runner`), egress to Guild, and that the token matches the runner created in Step 1.
+- Image pull / timeout → raise `HELM_TIMEOUT` (image is ~500MB)  
+- CrashLoop / `exec format error` → node arch vs image (use multi-arch `:scm-main`)  
+- Never Online → wrong token, or no egress to Guild; check  
+  `kubectl -n aiden-cce-runner logs -l app.kubernetes.io/name=aiden-runner`  
+
 
 ### Step 5 — Attach runner to agent (Guild UI, manual)
 
@@ -141,12 +148,13 @@ Open agent **`cce-scm-analyst`** and send:
 | Env | Required | Purpose |
 |---|---|---|
 | `STACKGEN_RUNNER_TOKEN` | Yes | Guild remote-runner registration token |
-| `MOTHERSHIP_URL` | Yes | Guild base URL (no trailing slash) |
+| `MOTHERSHIP_URL` | Yes | Guild base URL (trailing slash stripped) |
 | `RUNNER_IMAGE` | No | Default `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main` |
 | `NS` | No | Default `aiden-cce-runner` |
 | `KUBE_CONTEXT` | No | Current kubectl context if unset |
-| `RUNNER_NAME` | No | Default `cce-scm-runner` (Online wait label) |
-| `SKIP_WAIT_ONLINE` | No | Set `1` to skip Guild Online poll |
+| `RUNNER_NAME` | No | Default `cce-scm-runner` (messages only) |
+| `HELM_TIMEOUT` | No | Default `10m` |
+| `WAIT_ONLINE` | No | Set `1` to watch pod logs for Online (default off) |
 
 ### tfvars knobs (non-secrets)
 
