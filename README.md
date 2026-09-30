@@ -1,6 +1,6 @@
 # Aiden CCE SCM runner
 
-Paste a GitLab URL in Guild chat. The agent runs `cce scm describe` on a remote runner and returns forge metadata YAML (no clone on the default path).
+Paste a GitLab URL in Guild chat. The agent runs `cce scm describe` on a remote runner (API only, no clone), maps forge metadata into **customer Backstage catalog YAML**, and returns it. Upload/publish is out of scope until the customer names a destination.
 
 **Public image:** `ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main`  
 Anonymous pull. Multi-arch: `linux/amd64` + `linux/arm64`.
@@ -22,7 +22,7 @@ This root does **not** create the remote runner or attach it to the agent. Those
 ## Prerequisites
 
 - Guild access (UI + PAT for tofu)
-- OpenTofu (or Terraform) ≥ 1.5, StackGen provider ≥ 0.1.25
+- OpenTofu (or Terraform) ≥ 1.5, StackGen provider ≥ 0.1.42 (`sg_skill`)
 - Customer cluster: `kubectl` + Helm 3
 - Egress from that cluster to Guild, `ghcr.io`, and GitLab
 - GitLab PAT with `read_api` (or `api` / `read_user`)
@@ -81,8 +81,8 @@ tofu output
 |---|---|---|
 | GitLab integration | `cce-scm-gitlab` | Vault secret included |
 | Vault → runner bind | on `cce-scm-runner` | When `bind_gitlab_secret_to_runner=true` |
-| Agent | `cce-scm-analyst` | **Not** attached to a runner yet. Persona tells it to `load_skill scm-describe` / `scm-analyze`. |
-| Skills (approved SOPs) | `scm-describe`, `scm-analyze` | Org-wide via `search_skill` / `load_skill` — no separate agent↔skill attach resource |
+| Agent | `cce-scm-analyst` | **Not** attached to a runner yet. Thin domain persona. Skill bound via `skills = [...]`. |
+| Skill | `scm-api-to-backstage` | Real catalog skill (`SKILL.md`) managed by `sg_skill`. Technical procedure lives here — not in the persona, not as a runbook. |
 | Policy | `cce-scm-no-write` | |
 
 **What tofu does not create:** remote runner, agent↔runner attachment.
@@ -141,7 +141,19 @@ Use the token from the **current** Guild runner. A token from a deleted runner w
 
 Open agent **`cce-scm-analyst`** and send:
 
-> Describe https://gitlab.com/gitlab-org/cli as repository metadata. Prefer the forge/API path.
+> Scan https://gitlab.com/gitlab-org/cli via SCM APIs and produce Backstage catalog YAML. Use the skill example template unless I paste a customer template. Do not clone. Do not upload.
+
+Replace the companion template under `skills/scm-api-to-backstage/references/` (or paste YAML in chat) with the customer's real Backstage shape when they provide it.
+
+### Skills vs runbooks
+
+| | Skills (`SKILL.md`) | Runbook SOPs |
+|---|---|---|
+| Purpose | Technical how-to for agents (CLIs, mapping, stop conditions) | Policy-blessed incident playbooks |
+| This repo | **`scm-api-to-backstage` only** | None |
+| Load path | Agent `skills = [...]` + `load_skill` | `get_runbook` / workflow `runbook_refs` |
+
+Do not put CLI choreography in the agent persona. Guild already owns tool routing prompts.
 
 ### Replacing a runner (rehearsal / recreate)
 
@@ -173,7 +185,7 @@ If an old `cce-scm-runner` already exists (including one previously created by t
 
 | Variable | Example | Purpose |
 |---|---|---|
-| `remote_runner_name` | `"cce-scm-runner"` | Must match Guild runner name (skills + secret bind) |
+| `remote_runner_name` | `"cce-scm-runner"` | Must match Guild runner name (vault bind + shell tool prefix) |
 | `create_gitlab_integration` | `true` | Create GitLab integration + vault |
 | `bind_gitlab_secret_to_runner` | `true` | Bind vault on that runner (runner must exist) |
 | `gitlab_integration_name` | `"cce-scm-gitlab"` | Integration name |
@@ -184,7 +196,7 @@ If an old `cce-scm-runner` already exists (including one previously created by t
 1. Guild → Integrations → `cce-scm-gitlab` exists  
 2. Guild → Remote runners → `cce-scm-runner` **Online**, GitLab secret bound  
 3. Agent `cce-scm-analyst` has that runner attached  
-4. Demo prompt returns forge metadata YAML  
+4. Demo prompt returns Backstage catalog YAML from API metadata (no clone)  
 
 ### Security
 
@@ -201,7 +213,7 @@ helm uninstall cce-runner -n "${NS:-aiden-cce-runner}"
 kubectl delete namespace "${NS:-aiden-cce-runner}"
 
 # Guild (SE) — tofu does not delete the remote runner
-cd terraform && tofu destroy    # integration, agent, skills, policy, vault bind
+cd terraform && tofu destroy    # integration, agent, policy, vault bind, sg_skill
 # Then Guild UI → delete remote runner cce-scm-runner (detach from agent first if needed)
 ```
 

@@ -8,7 +8,7 @@ locals {
 
       This apply created:
         Agent:              ${sg_agent.cce_scm_analyst.name}  (not attached yet)
-        Skills:             ${sg_runbook_sop.scm_describe.name}, ${sg_runbook_sop.scm_analyze.name}
+        Skill:              ${sg_skill.scm_api_to_backstage.name}  (sg_skill; bound on agent.skills)
         GitLab integration: ${local.create_gitlab_integration ? local.gitlab_integration_name : "(none)"}
         Secret on runner:   ${nonsensitive(local.bind_runner_secrets)} → ${local.resolved_remote_runner_name}
 
@@ -34,14 +34,9 @@ output "agent_name" {
   value       = sg_agent.cce_scm_analyst.name
 }
 
-output "describe_skill_name" {
-  description = "Approved Guild skill: cce scm describe (API-first, no clone)."
-  value       = sg_runbook_sop.scm_describe.name
-}
-
-output "analyze_skill_name" {
-  description = "Approved Guild skill: clone then cce --folder (deep scan, last resort)."
-  value       = sg_runbook_sop.scm_analyze.name
+output "skill_name" {
+  description = "Guild catalog skill: API scan → customer Backstage YAML (SKILL.md via sg_skill)."
+  value       = sg_skill.scm_api_to_backstage.name
 }
 
 output "remote_runner_name" {
@@ -76,6 +71,6 @@ output "helm_env_example" {
 }
 
 output "demo_prompt" {
-  description = "Prompt-only API metadata example (user does not clone)."
-  value       = "Describe https://gitlab.com/gitlab-org/cli as repository metadata YAML. Use cce scm describe. Do not clone."
+  description = "API scan → Backstage YAML demo (no clone; no upload unless customer names a destination)."
+  value       = "Scan https://gitlab.com/gitlab-org/cli via SCM APIs and produce Backstage catalog YAML. Use the customer template if I paste one; otherwise use the skill example template. Do not clone. Do not upload anywhere."
 }
