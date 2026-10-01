@@ -1,0 +1,9 @@
+.terraform/
+terraform/terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+docker/cce-staging/cce
+.env
+scripts/.env
+.helm-namespace
