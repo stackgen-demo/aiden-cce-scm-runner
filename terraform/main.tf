@@ -54,10 +54,6 @@ locals {
     ""
   )
 
-  # Bind vault → runner only when integration exists and operator opts in.
-  # Remote runner itself is created manually in Guild (not by this root).
-  bind_runner_secrets = local.create_gitlab_integration && var.bind_gitlab_secret_to_runner
-
   persona = trimspace(file("${path.module}/personas/analyst.md.tftpl"))
 }
 
@@ -74,13 +70,12 @@ resource "terraform_data" "validate_gitlab_input" {
   }
 }
 
-# Vault secret for the GitLab Guild integration. Same UUID can be bound on a
-# manually created remote runner via sg_remote_runner_secrets (see bind_gitlab_secret_to_runner).
+# Vault secret for the Guild GitLab integration (bind onto a remote runner in Guild UI if needed).
 resource "sg_secret" "gitlab_vault" {
   count = local.create_gitlab_secret ? 1 : 0
 
   name        = "${local.gitlab_integration_name}-vault"
-  description = "GitLab credentials for ${local.gitlab_integration_name} (integration + runner env sync)."
+  description = "GitLab credentials for ${local.gitlab_integration_name}."
   category    = "SCM"
   subcategory = "gitlab"
   metadata    = local.gitlab_secret_metadata
@@ -104,24 +99,6 @@ resource "sg_guild_integration" "gitlab" {
 
   depends_on = [
     terraform_data.validate_gitlab_input,
-    sg_secret.gitlab_vault,
-  ]
-}
-
-# Optional: attach the GitLab vault secret to an existing (manually created) remote runner.
-# Create the runner in Guild UI first when bind_gitlab_secret_to_runner=true.
-resource "sg_remote_runner_secrets" "this" {
-  count = local.bind_runner_secrets ? 1 : 0
-
-  runner_id = local.resolved_remote_runner_name
-  typed_secret_refs = {
-    gitlab = local.gitlab_secret_id
-  }
-  generic_secret_ref_ids        = []
-  secrets_sync_interval_seconds = 60
-
-  depends_on = [
-    sg_guild_integration.gitlab,
     sg_secret.gitlab_vault,
   ]
 }

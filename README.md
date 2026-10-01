@@ -32,7 +32,7 @@ This root does **not** create the remote runner or attach it to the agent. Those
 
 ## End-to-end steps
 
-Do these in order. Runner create (Step 1) must happen **before** tofu when `bind_gitlab_secret_to_runner=true` (default).
+Do these in order. Runner create (Step 1) can happen before or after tofu; tofu never binds vault secrets onto the runner.
 
 ### Step 1 — Create the remote runner (Guild UI, manual)
 
@@ -69,7 +69,6 @@ cd aiden-cce-scm-runner
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
 # Confirm remote_runner_name = "cce-scm-runner"
-# bind_gitlab_secret_to_runner = true  → runner from Step 1 must already exist
 tofu init
 tofu apply
 tofu output
@@ -80,14 +79,13 @@ tofu output
 | Resource | Default name | Notes |
 |---|---|---|
 | GitLab integration | `cce-scm-gitlab` | Vault secret included |
-| Vault → runner bind | on `cce-scm-runner` | When `bind_gitlab_secret_to_runner=true` |
 | Agent | `cce-scm-analyst` | **Not** attached to a runner yet. Thin domain persona. Skill bound via `skills = [...]`. |
 | Skill | `scm-api-to-backstage` | Real catalog skill (`SKILL.md`) managed by `sg_skill`. Technical procedure lives here — not in the persona, not as a runbook. |
 | Policy | `cce-scm-no-write` | |
 
 **What tofu does not create:** remote runner, agent↔runner attachment.
 
-If the runner does not exist yet, either finish Step 1 first, or set `bind_gitlab_secret_to_runner = false`, apply, then bind the GitLab secret onto the runner in Guild UI later.
+Bind the GitLab vault secret onto the runner in Guild UI after the runner exists (tofu does not do this).
 
 ### Step 4 — Helm in the customer cluster (platform)
 
@@ -161,7 +159,7 @@ If an old `cce-scm-runner` already exists (including one previously created by t
 
 1. Guild UI → detach it from the agent if attached  
 2. Guild UI → **delete** the remote runner (state rm does not delete it)  
-3. If tofu still tracks it: `tofu state rm 'sg_remote_runner.this[0]'` and `tofu state rm 'sg_remote_runner_secrets.this[0]'`  
+3. If an old tofu state still tracks a runner/secrets resource from an earlier revision, `tofu state rm` those addresses  
 4. Start again at Step 1 (new token) → Step 3 apply → Step 4 Helm with the **new** token → Step 5 attach  
 
 ---
@@ -185,23 +183,22 @@ If an old `cce-scm-runner` already exists (including one previously created by t
 
 | Variable | Example | Purpose |
 |---|---|---|
-| `remote_runner_name` | `"cce-scm-runner"` | Must match Guild runner name (vault bind + shell tool prefix) |
+| `remote_runner_name` | `"cce-scm-runner"` | Must match Guild runner name (shell tool prefix) |
 | `create_gitlab_integration` | `true` | Create GitLab integration + vault |
-| `bind_gitlab_secret_to_runner` | `true` | Bind vault on that runner (runner must exist) |
 | `gitlab_integration_name` | `"cce-scm-gitlab"` | Integration name |
 | `runner_docker_image` | `"ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"` | Documented Helm image |
 
 ### Verify checklist
 
 1. Guild → Integrations → `cce-scm-gitlab` exists  
-2. Guild → Remote runners → `cce-scm-runner` **Online**, GitLab secret bound  
+2. Guild → Remote runners → `cce-scm-runner` **Online**; bind GitLab vault secret in UI  
 3. Agent `cce-scm-analyst` has that runner attached  
 4. Demo prompt returns Backstage catalog YAML from API metadata (no clone)  
 
 ### Security
 
 - Policy `cce-scm-no-write` blocks write actions on the runner  
-- GitLab PAT reaches the pod only via Guild vault → `typed_secret_refs.gitlab` sync  
+- GitLab PAT reaches the pod only via Guild vault → runner secret bind (UI) → mothership sync  
 - Public image; no GHCR pull secret  
 - Runner registration token: shell env for Helm only — never tfvars or checked-in values  
 
@@ -213,7 +210,7 @@ helm uninstall cce-runner -n "${NS:-aiden-cce-runner}"
 kubectl delete namespace "${NS:-aiden-cce-runner}"
 
 # Guild (SE) — tofu does not delete the remote runner
-cd terraform && tofu destroy    # integration, agent, policy, vault bind, sg_skill
+cd terraform && tofu destroy    # integration, agent, policy, vault secret, sg_skill
 # Then Guild UI → delete remote runner cce-scm-runner (detach from agent first if needed)
 ```
 

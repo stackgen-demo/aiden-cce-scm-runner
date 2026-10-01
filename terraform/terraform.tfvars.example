@@ -1,8 +1,8 @@
 # Non-secrets only. Remote runner is created manually in Guild — not by tofu.
 # Agent is not attached to a runner by this root (attach in Guild UI after Online).
+# Bind the GitLab vault secret onto the runner in Guild UI (tofu does not do that).
 
-remote_runner_name            = "cce-scm-runner"
-create_gitlab_integration     = true
-bind_gitlab_secret_to_runner  = true
-gitlab_integration_name       = "cce-scm-gitlab"
-runner_docker_image           = "ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"
+remote_runner_name        = "cce-scm-runner"
+create_gitlab_integration = true
+gitlab_integration_name   = "cce-scm-gitlab"
+runner_docker_image       = "ghcr.io/stackgen-demo/aiden-cce-scm-runner:scm-main"

@@ -3,14 +3,13 @@ locals {
 
     Aiden CCE SCM stack applied (tofu does not create or attach the remote runner).
 
-      Already done (or do first if bind_gitlab_secret_to_runner=true):
+      Already done:
         Guild UI → create remote runner "${local.resolved_remote_runner_name}" → copy token + mothership URL.
 
       This apply created:
         Agent:              ${sg_agent.cce_scm_analyst.name}  (not attached yet)
         Skill:              ${sg_skill.scm_api_to_backstage.name}  (sg_skill; bound on agent.skills)
         GitLab integration: ${local.create_gitlab_integration ? local.gitlab_integration_name : "(none)"}
-        Secret on runner:   ${nonsensitive(local.bind_runner_secrets)} → ${local.resolved_remote_runner_name}
 
       Next — hand platform Helm (env only; script does not read tofu state):
         export MOTHERSHIP_URL="${var.stackgen_url}"
@@ -18,7 +17,9 @@ locals {
         export RUNNER_IMAGE=${var.runner_docker_image}
         ./helm/install.sh
 
-      Then — Guild UI: attach ${local.resolved_remote_runner_name} → ${sg_agent.cce_scm_analyst.name}
+      Then — Guild UI:
+        1. Bind the GitLab vault secret onto ${local.resolved_remote_runner_name} (if using GitLab)
+        2. Attach ${local.resolved_remote_runner_name} → ${sg_agent.cce_scm_analyst.name}
         Wait ~60s for vault sync, then chat the demo prompt.
 
   EOT
@@ -47,11 +48,6 @@ output "remote_runner_name" {
 output "gitlab_integration_name" {
   description = "Guild GitLab integration name (empty when not created)."
   value       = local.create_gitlab_integration ? local.gitlab_integration_name : ""
-}
-
-output "gitlab_secret_bound" {
-  description = "True when this apply binds the GitLab vault secret on remote_runner_name."
-  value       = nonsensitive(local.bind_runner_secrets)
 }
 
 output "runner_docker_image" {

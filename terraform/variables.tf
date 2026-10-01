@@ -36,8 +36,7 @@ variable "agent_budget_usd" {
 variable "remote_runner_name" {
   description = <<-EOT
     Name of the Guild remote runner you create manually (UI/API). Not created by this root.
-    Used for shell-tool prefixes and optional vault secret binding.
-    Empty uses cce-scm-runner (+ optional name_suffix).
+    Used for shell-tool prefixes (auto_approve_tools). Empty uses cce-scm-runner (+ optional name_suffix).
   EOT
   type        = string
   default     = ""
@@ -51,17 +50,6 @@ variable "auto_approve_runner_tools" {
 
 variable "create_gitlab_integration" {
   description = "When true (default), create sg_guild_integration type=gitlab and its vault secret."
-  type        = bool
-  default     = true
-}
-
-variable "bind_gitlab_secret_to_runner" {
-  description = <<-EOT
-    When true (default), bind the GitLab vault secret on the manually created remote runner
-    (typed_secret_refs.gitlab) so mothership sync injects GITLAB_TOKEN after Online.
-    The runner named by remote_runner_name must already exist in Guild.
-    Set false if you will bind the secret in Guild UI instead.
-  EOT
   type        = bool
   default     = true
 }
