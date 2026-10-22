@@ -1,0 +1,98 @@
+# One-shot / on-demand: bake CCE git main into public :scm-main image.
+name: rebuild-scm-main
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout runner repo
+        uses: actions/checkout@v4
+
+      - name: Checkout CCE main
+        uses: actions/checkout@v4
+        with:
+          repository: appcd-dev/cce
+          ref: main
+          token: ${{ secrets.CROSS_ORG_PAT }}
+          path: cce-src
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: cce-src/go.sum
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build CCE binaries (amd64 + arm64)
+        env:
+          CCE_REPO: ${{ github.workspace }}/cce-src
+          STAGING: ${{ github.workspace }}/docker/cce-staging
+        run: |
+          set -euo pipefail
+          mkdir -p "${STAGING}"
+          go env -w GOPRIVATE=github.com/appcd-dev/*
+          (cd "${CCE_REPO}" && go mod download)
+          GOMODCACHE="$(go env GOMODCACHE)"
+          for arch in amd64 arm64; do
+            echo "==> compile linux/${arch}"
+            docker run --rm --platform "linux/${arch}" \
+              -v "${CCE_REPO}:/src:ro" \
+              -v "${GOMODCACHE}:/go/pkg/mod" \
+              -v "${STAGING}:/out" \
+              -w /src \
+              -e CGO_ENABLED=1 -e GOOS=linux -e "GOARCH=${arch}" \
+              -e GOMODCACHE=/go/pkg/mod \
+              -e GOPRIVATE=github.com/appcd-dev/* \
+              golang:1.25-bookworm \
+              bash -c 'apt-get update -qq && apt-get install -y -qq gcc libc6-dev >/dev/null && go build -mod=mod -o /out/cce ./cmd/cce && chmod +x /out/cce'
+            test -x "${STAGING}/cce"
+            mv "${STAGING}/cce" "${STAGING}/cce-${arch}"
+          done
+
+      - name: Build and push multi-arch scm-main
+        env:
+          STAGING: ${{ github.workspace }}/docker/cce-staging
+          IMAGE: ghcr.io/stackgen-demo/aiden-cce-scm-runner
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            cp "${STAGING}/cce-${arch}" "${STAGING}/cce"
+            docker buildx build \
+              --platform "linux/${arch}" \
+              --build-context "ccesrc=${STAGING}" \
+              --build-arg CCE_FROM_GIT=0 \
+              --build-arg CCE_FROM_LOCAL=1 \
+              --build-arg CCE_VERSION=main \
+              -t "${IMAGE}:scm-main-${arch}" \
+              --push \
+              -f docker/Dockerfile \
+              docker
+          done
+          docker buildx imagetools create -t "${IMAGE}:scm-main" \
+            "${IMAGE}:scm-main-amd64" \
+            "${IMAGE}:scm-main-arm64"
+          docker buildx imagetools inspect "${IMAGE}:scm-main"
+
+      - name: Record CCE SHA
+        run: |
+          echo "CCE_SHA=$(git -C cce-src rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          git -C cce-src log -1 --oneline >> "$GITHUB_STEP_SUMMARY"
