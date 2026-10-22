@@ -46,9 +46,11 @@ jobs:
         env:
           CCE_REPO: ${{ github.workspace }}/cce-src
           STAGING: ${{ github.workspace }}/docker/cce-staging
+          CROSS_ORG_PAT: ${{ secrets.CROSS_ORG_PAT }}
         run: |
           set -euo pipefail
           mkdir -p "${STAGING}"
+          git config --global url."https://x-access-token:${CROSS_ORG_PAT}@github.com/".insteadOf "https://github.com/"
           go env -w GOPRIVATE=github.com/appcd-dev/*
           (cd "${CCE_REPO}" && go mod download)
           GOMODCACHE="$(go env GOMODCACHE)"
