@@ -65,7 +65,7 @@ jobs:
               -e GOMODCACHE=/go/pkg/mod \
               -e GOPRIVATE=github.com/appcd-dev/* \
               golang:1.25-bookworm \
-              bash -c 'apt-get update -qq && apt-get install -y -qq gcc libc6-dev >/dev/null && go build -mod=mod -o /out/cce ./cmd/cce && chmod +x /out/cce'
+              bash -c 'apt-get update -qq && apt-get install -y -qq gcc libc6-dev >/dev/null && go build -mod=mod -buildvcs=false -o /out/cce ./cmd/cce && chmod +x /out/cce'
             test -x "${STAGING}/cce"
             mv "${STAGING}/cce" "${STAGING}/cce-${arch}"
           done
