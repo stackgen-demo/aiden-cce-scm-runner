@@ -73,7 +73,13 @@ RUN set -eux; \
     cce scm describe --help >/dev/null; \
   fi
 
+# Skills/workflow contract: $WORK=/workspace/repos/<host>/<path>.
+# Base aiden-runner image does not create /workspace; uid 1000 cannot mkdir it
+# on /. Without this, agents fall back to $HOME and cleanup refuses to delete.
+RUN mkdir -p /workspace/repos && chown -R runner:runner /workspace
+
 USER runner
+WORKDIR /workspace
 
 ENV CCE_VERSION=${CCE_VERSION}
 ENV ALLOWED_CLIS=bash,sh,git,glab,gh,cce,curl,jq,tar,mkdir,cp,rm,cat,grep,awk,sed,head,tail,chmod,mktemp,printf,test,command
